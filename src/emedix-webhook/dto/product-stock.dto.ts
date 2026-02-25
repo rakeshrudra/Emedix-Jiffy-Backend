@@ -1,75 +1,48 @@
-import { Expose } from 'class-transformer';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class ProductStockDto {
-    @Expose({ name: 'Store Id' })
-    @IsNotEmpty()
-    @IsString()
-    storeId: string;
+    @ApiProperty({ example: 'STORE-001', description: 'Store identifier' })
+    'Store Id': string;
 
-    @Expose({ name: 'NameToDisplay' })
-    @IsNotEmpty()
-    @IsString()
-    nameToDisplay: string;
+    @ApiProperty({ example: 'Paracetamol 500mg', description: 'Product display name' })
+    'NameToDisplay': string;
 
-    @Expose({ name: 'Product Id' })
-    @IsNotEmpty()
-    @IsString()
-    productId: string;
+    @ApiProperty({ example: 'PROD-1234', description: 'Product identifier' })
+    'Product Id': string;
 
-    @Expose({ name: 'HSN/SAC' })
-    @IsOptional()
-    @IsString()
-    hsnSac: string;
+    @ApiProperty({ example: '3004', description: 'HSN/SAC code', required: false })
+    'HSN/SAC'?: string;
 
-    @Expose({ name: 'Stock' })
-    @IsNotEmpty()
-    stock: number;
+    @ApiProperty({ example: 150, description: 'Stock quantity' })
+    'Stock': number;
 
-    @Expose({ name: 'StockUnit' })
-    @IsOptional()
-    @IsString()
-    stockUnit: string;
+    @ApiProperty({ example: 'Strips', description: 'Unit of stock', required: false })
+    'StockUnit'?: string;
 
-    @Expose({ name: 'Stock Value' })
-    @IsNotEmpty()
-    stockValue: number;
+    @ApiProperty({ example: 7500, description: 'Total stock value' })
+    'Stock Value': number;
 
-    @Expose({ name: 'Category' })
-    @IsOptional()
-    @IsString()
-    category: string;
+    @ApiProperty({ example: 'Tablets', description: 'Product category', required: false })
+    'Category'?: string;
 
-    @Expose({ name: 'Marketing Group' })
-    @IsOptional()
-    @IsString()
-    marketingGroup: string;
+    @ApiProperty({ example: 'OTC', description: 'Marketing group', required: false })
+    'Marketing Group'?: string;
 
-    @Expose({ name: 'Manufacturing Co' })
-    @IsOptional()
-    @IsString()
-    manufacturingCo: string;
+    @ApiProperty({ example: 'Sun Pharma', description: 'Manufacturer', required: false })
+    'Manufacturing Co'?: string;
 
-    @Expose({ name: 'MRP' })
-    @IsNotEmpty()
-    mrp: number;
+    @ApiProperty({ example: 50, description: 'Maximum retail price' })
+    'MRP': number;
 
-    @Expose({ name: 'Rate' })
-    @IsNotEmpty()
-    rate: number;
+    @ApiProperty({ example: 45, description: 'Rate' })
+    'Rate': number;
 
-    @Expose({ name: 'Status' })
-    @IsOptional()
-    @IsString()
-    status: string;
+    @ApiProperty({ example: 'Active', description: 'Product status', required: false })
+    'Status'?: string;
 
-    @Expose({ name: 'Schedule' })
-    @IsOptional()
-    @IsString()
-    schedule: string;
+    @ApiProperty({ example: 'H', description: 'Schedule category', required: false })
+    'Schedule'?: string;
 
-    @Expose({ name: 'LastUpdate' })
-    @IsOptional()
-    @IsString()
-    lastUpdate: string;
+    @ApiProperty({ example: '2026-02-25', description: 'Last update timestamp', required: false })
+    'LastUpdate'?: string;
 }
