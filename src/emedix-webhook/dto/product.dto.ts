@@ -1,33 +1,45 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ProductDto {
-    @ApiProperty({ example: 'panasonic panasonicTV 32 inch' })
+    @ApiProperty({ example: '001' })
+    store_id: string;
+
+    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     product_name: string;
 
-    @ApiProperty({ example: '10000001' })
+    @ApiProperty({ example: 'MED10001' })
     product_code: string;
 
-    @ApiProperty({ example: 'ASHISH', required: false })
+    @ApiProperty({ example: 'Cipla Ltd', required: false })
     product_company?: string;
+
+    @ApiProperty({ example: '3004', required: false })
+    'HSN/SAC'?: string;
 
     @ApiProperty({ example: 'no', required: false })
     prescription_required?: string;
 
-    @ApiProperty({ example: 17578.125 })
-    product_price: number;
+    @ApiProperty({ example: '25.00', required: false })
+    product_price?: string;
 
-    @ApiProperty({ example: 17578.125 })
-    product_discount_price: number;
+    @ApiProperty({ example: '22.00', required: false })
+    product_discount_price?: string;
 
-    @ApiProperty({ example: 'TV', required: false })
+    @ApiProperty({ example: 'Tablet', required: false })
     product_type?: string;
 
-    @ApiProperty({ example: '1', required: false })
+    @ApiProperty({ example: '10 Tablets per Strip', required: false })
     packaging_of_medicines?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: 'Paracetamol 500mg', required: false })
     product_composition?: string;
 
     @ApiProperty({ example: 'Enable', required: false })
     status?: string;
+
+    @ApiProperty({ example: '250', required: false })
+    product_stock?: string;
+
+    @ApiProperty({ example: '2026-02-27 10:30:00', required: false })
+    last_updated?: string;
 }

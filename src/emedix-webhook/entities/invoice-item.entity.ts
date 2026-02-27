@@ -19,36 +19,36 @@ export class InvoiceItem {
     @ManyToOne(() => Invoice, (invoice) => invoice.items, { onDelete: 'CASCADE' })
     invoice: Invoice;
 
-    @ApiProperty({ example: '10000008' })
+    @ApiProperty({ example: 'MED10001' })
     @Column()
     itemNo: string;
 
-    @ApiProperty({ example: '5.00' })
+    @ApiProperty({ example: '2' })
     @Column()
     qty: string;
 
-    @ApiProperty({ example: '250.00' })
+    @ApiProperty({ example: '22.00' })
     @Column()
     discountPrice: string;
 
-    @ApiProperty({ example: '100.00' })
+    @ApiProperty({ example: '25.00' })
     @Column()
     price: string;
 
-    @ApiProperty({ example: '2 MUCH GOLD 6 CAP' })
+    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @Column()
     itemName: string;
 
-    @ApiProperty({ example: '1250.00' })
+    @ApiProperty({ example: '44.00' })
     @Column()
     total: string;
 
     @ApiProperty({ example: '0' })
-    @Column({ default: '0' })
+    @Column()
     isReturn: string;
 
     @ApiProperty({ example: '' })
-    @Column({ type: 'text', nullable: true })
+    @Column()
     returnComment: string;
 
     @ApiProperty()

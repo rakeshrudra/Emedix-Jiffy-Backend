@@ -6,81 +6,91 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     OneToMany,
+    Unique,
 } from 'typeorm';
 import { InvoiceItem } from './invoice-item.entity';
 
 @Entity('invoices')
+@Unique(['storeId', 'invoiceNo'])
 export class Invoice {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
     id: number;
 
-    @ApiProperty({ example: 'SIB1' })
-    @Column({ unique: true })
+    @ApiProperty({ example: '001' })
+    @Column()
+    storeId: string;
+
+    @ApiProperty({ example: 'INV10045' })
+    @Column()
     invoiceNo: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true, unique: true })
+    @ApiProperty({ example: '2026-02-27' })
+    @Column()
+    invoiceDate: string;
+
+    @ApiProperty({ example: 'ORD10045' })
+    @Column()
     orderNo: string;
 
     @ApiProperty({ example: 'Shipped' })
-    @Column({ nullable: true })
+    @Column()
     orderStatus: string;
 
-    @ApiProperty({ example: 'ANIKET PATIL' })
+    @ApiProperty({ example: 'Rahul Sharma' })
     @Column()
     customerName: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ type: 'text', nullable: true })
+    @ApiProperty({ example: 'MG Road, Andheri East' })
+    @Column({ type: 'text' })
     address1: string;
 
-    @ApiProperty({ example: 'Not Define' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Mumbai' })
+    @Column()
     customerCity: string;
 
-    @ApiProperty({ example: 'Not Define' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'India' })
+    @Column()
     customerCountry: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '400069' })
+    @Column()
     customerZipcode: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Online' })
+    @Column()
     paymentMethod: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '9876543210' })
+    @Column()
     phoneNo: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'UPI' })
+    @Column()
     paymentType: string;
 
     @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @Column()
     couponCode: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '0.00' })
+    @Column()
     couponDiscount: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '0.00' })
+    @Column()
     couponPrice: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '0.00' })
+    @Column()
     walletPrice: string;
 
     @ApiProperty({ example: '0.00' })
-    @Column({ nullable: true })
+    @Column()
     shippingCharge: string;
 
-    @ApiProperty({ example: '133.92' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '12.00' })
+    @Column()
     tax: string;
 
     @OneToMany(() => InvoiceItem, (item) => item.invoice, { cascade: true })

@@ -1,9 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ProductStockDto {
-    @ApiProperty({ example: '10000001' })
+    @ApiProperty({ example: '001' })
+    store_id: string;
+
+    @ApiProperty({ example: 'MED10001' })
     product_code: string;
 
-    @ApiProperty({ example: 108.0 })
-    product_stock: number;
+    @ApiProperty({ example: '250' })
+    product_stock: string;
 }

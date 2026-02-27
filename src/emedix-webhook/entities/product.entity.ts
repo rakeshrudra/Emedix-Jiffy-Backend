@@ -5,57 +5,71 @@ import {
     Column,
     CreateDateColumn,
     UpdateDateColumn,
+    Unique,
 } from 'typeorm';
 
 @Entity('products')
+@Unique(['storeId', 'productCode'])
 export class Product {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
     id: number;
 
-    @ApiProperty({ example: 'Paracetamol 500mg' })
+    @ApiProperty({ example: '001' })
+    @Column()
+    storeId: string;
+
+    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @Column()
     productName: string;
 
-    @ApiProperty({ example: '10000001' })
-    @Column({ unique: true })
+    @ApiProperty({ example: 'MED10001' })
+    @Column()
     productCode: string;
 
-    @ApiProperty({ example: 'ASHISH' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Cipla Ltd' })
+    @Column()
     productCompany: string;
 
+    @ApiProperty({ example: '3004' })
+    @Column()
+    hsnSac: string;
+
     @ApiProperty({ example: 'no' })
-    @Column({ nullable: true })
+    @Column()
     prescriptionRequired: string;
 
-    @ApiProperty({ example: 17578.125 })
-    @Column('decimal', { precision: 12, scale: 4 })
-    productPrice: number;
+    @ApiProperty({ example: '25.00' })
+    @Column()
+    productPrice: string;
 
-    @ApiProperty({ example: 17578.125 })
-    @Column('decimal', { precision: 12, scale: 4 })
-    productDiscountPrice: number;
+    @ApiProperty({ example: '22.00' })
+    @Column()
+    productDiscountPrice: string;
 
-    @ApiProperty({ example: 'TV' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Tablet' })
+    @Column()
     productType: string;
 
-    @ApiProperty({ example: '1' })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '10 Tablets per Strip' })
+    @Column()
     packagingOfMedicines: string;
 
-    @ApiProperty({ example: '' })
-    @Column({ type: 'text', nullable: true })
+    @ApiProperty({ example: 'Paracetamol 500mg' })
+    @Column({ type: 'text' })
     productComposition: string;
 
     @ApiProperty({ example: 'Enable' })
-    @Column({ nullable: true })
+    @Column()
     status: string;
 
-    @ApiProperty({ example: 108.0 })
-    @Column('decimal', { precision: 12, scale: 2, default: 0 })
-    productStock: number;
+    @ApiProperty({ example: '250' })
+    @Column()
+    productStock: string;
+
+    @ApiProperty({ example: '2026-02-27 10:30:00' })
+    @Column()
+    lastUpdated: string;
 
     @ApiProperty()
     @CreateDateColumn()

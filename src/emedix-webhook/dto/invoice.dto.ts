@@ -3,32 +3,32 @@ import { Type } from 'class-transformer';
 import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 export class InvoiceItemDto {
-    @ApiProperty({ example: '10000008' })
+    @ApiProperty({ example: 'MED10001' })
     @IsNotEmpty()
     @IsString()
     item_no: string;
 
-    @ApiProperty({ example: '5.00' })
+    @ApiProperty({ example: '2' })
     @IsNotEmpty()
     @IsString()
     qty: string;
 
-    @ApiProperty({ example: '250.00' })
+    @ApiProperty({ example: '22.00' })
     @IsNotEmpty()
     @IsString()
     discount_price: string;
 
-    @ApiProperty({ example: '100.00' })
+    @ApiProperty({ example: '25.00' })
     @IsNotEmpty()
     @IsString()
     price: string;
 
-    @ApiProperty({ example: '2 MUCH GOLD 6 CAP' })
+    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @IsNotEmpty()
     @IsString()
     item_name: string;
 
-    @ApiProperty({ example: '1250.00' })
+    @ApiProperty({ example: '44.00' })
     @IsNotEmpty()
     @IsString()
     total: string;
@@ -45,12 +45,22 @@ export class InvoiceItemDto {
 }
 
 export class InvoiceDto {
-    @ApiProperty({ example: 'SIB1' })
+    @ApiProperty({ example: '001' })
+    @IsNotEmpty()
+    @IsString()
+    store_id: string;
+
+    @ApiProperty({ example: 'INV10045' })
     @IsNotEmpty()
     @IsString()
     invoice_no: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '2026-02-27', required: false })
+    @IsOptional()
+    @IsString()
+    invoice_date?: string;
+
+    @ApiProperty({ example: 'ORD10045', required: false })
     @IsOptional()
     @IsString()
     order_no?: string;
@@ -60,42 +70,42 @@ export class InvoiceDto {
     @IsString()
     order_status?: string;
 
-    @ApiProperty({ example: 'ANIKET PATIL' })
+    @ApiProperty({ example: 'Rahul Sharma' })
     @IsNotEmpty()
     @IsString()
     customername: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: 'MG Road, Andheri East', required: false })
     @IsOptional()
     @IsString()
     address1?: string;
 
-    @ApiProperty({ example: 'Not Define', required: false })
+    @ApiProperty({ example: 'Mumbai', required: false })
     @IsOptional()
     @IsString()
     customercity?: string;
 
-    @ApiProperty({ example: 'Not Define', required: false })
+    @ApiProperty({ example: 'India', required: false })
     @IsOptional()
     @IsString()
     customercountry?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '400069', required: false })
     @IsOptional()
     @IsString()
     customerzipcode?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: 'Online', required: false })
     @IsOptional()
     @IsString()
     paymentmethod?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '9876543210', required: false })
     @IsOptional()
     @IsString()
     phone_no?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: 'UPI', required: false })
     @IsOptional()
     @IsString()
     payment_type?: string;
@@ -105,17 +115,17 @@ export class InvoiceDto {
     @IsString()
     coupon_code?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '0.00', required: false })
     @IsOptional()
     @IsString()
     coupon_discount?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '0.00', required: false })
     @IsOptional()
     @IsString()
     coupon_price?: string;
 
-    @ApiProperty({ example: '', required: false })
+    @ApiProperty({ example: '0.00', required: false })
     @IsOptional()
     @IsString()
     wallet_price?: string;
@@ -125,7 +135,7 @@ export class InvoiceDto {
     @IsString()
     shipping_charge?: string;
 
-    @ApiProperty({ example: '133.92', required: false })
+    @ApiProperty({ example: '12.00', required: false })
     @IsOptional()
     @IsString()
     tax?: string;

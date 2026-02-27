@@ -25,29 +25,41 @@ export class EmedixWebhookService {
     async handleProduct(data: ProductDto | ProductDto[]): Promise<{ received: number; message: string }> {
         const items = Array.isArray(data) ? data : [data];
 
-        await this.productRepository.upsert(
-            items.map((item) => ({
-                productName: item.product_name,
-                productCode: item.product_code,
-                productCompany: item.product_company,
-                prescriptionRequired: item.prescription_required,
-                productPrice: item.product_price,
-                productDiscountPrice: item.product_discount_price,
-                productType: item.product_type,
-                packagingOfMedicines: item.packaging_of_medicines,
-                productComposition: item.product_composition,
-                status: item.status,
-            })),
-            {
-                conflictPaths: ['productCode'],
-                skipUpdateIfNoValuesChanged: true,
-            },
-        );
+        try {
+            await this.productRepository.upsert(
+                items.map((item) => ({
+                    storeId: item.store_id,
+                    productName: item.product_name,
+                    productCode: item.product_code,
+                    productCompany: item.product_company,
+                    hsnSac: item['HSN/SAC'],
+                    prescriptionRequired: item.prescription_required,
+                    productPrice: item.product_price,
+                    productDiscountPrice: item.product_discount_price,
+                    productType: item.product_type,
+                    packagingOfMedicines: item.packaging_of_medicines,
+                    productComposition: item.product_composition,
+                    status: item.status,
+                    productStock: item.product_stock,
+                    lastUpdated: item.last_updated,
+                })),
+                {
+                    conflictPaths: ['storeId', 'productCode'],
+                    skipUpdateIfNoValuesChanged: true,
+                },
+            );
+            this.logger.log(`Upserted ${items.length} product(s)`);
+        } catch (error) {
+            if (error.message.includes('entity id is not set')) {
+                this.logger.warn('Identical data posted for product(s) - no changes applied.');
+            } else {
+                throw error;
+            }
+        }
 
-        this.logger.log(`Upserted ${items.length} product(s)`);
         return {
             received: items.length,
-            message: `Successfully upserted ${items.length} product(s)`,
+            message: `Successfully processed ${items.length} product(s)`,
         };
     }
 
@@ -55,108 +67,99 @@ export class EmedixWebhookService {
     async handleProductStock(data: ProductStockDto | ProductStockDto[]): Promise<{ received: number; message: string }> {
         const items = Array.isArray(data) ? data : [data];
 
-        await this.productRepository.upsert(
-            items.map((item) => ({
-                productCode: item.product_code,
-                productStock: item.product_stock,
-            })),
-            {
-                conflictPaths: ['productCode'],
-                skipUpdateIfNoValuesChanged: true,
-            },
-        );
+        try {
+            await this.productRepository.upsert(
+                items.map((item) => ({
+                    productCode: item.product_code,
+                    storeId: item.store_id,
+                    productStock: item.product_stock,
+                })),
+                {
+                    conflictPaths: ['storeId', 'productCode'],
+                    skipUpdateIfNoValuesChanged: true,
+                },
+            );
+            this.logger.log(`Upserted stock for ${items.length} product(s)`);
+        } catch (error) {
+            if (error.message.includes('entity id is not set')) {
+                this.logger.warn('Identical stock data posted - no changes applied.');
+            } else {
+                throw error;
+            }
+        }
 
-        this.logger.log(`Upserted stock for ${items.length} product(s)`);
         return {
             received: items.length,
-            message: `Successfully upserted stock for ${items.length} product(s)`,
+            message: `Successfully processed stock for ${items.length} product(s)`,
         };
     }
 
     // ── Invoice Upload ──
     async handleInvoice(invoices: InvoiceDto[]): Promise<{ received: number; message: string }> {
         for (const inv of invoices) {
-            // Find or create invoice
+            // Find or create invoice using composite key
             let invoice = await this.invoiceRepository.findOne({
-                where: { invoiceNo: inv.invoice_no },
+                where: { storeId: inv.store_id, invoiceNo: inv.invoice_no },
             });
 
+            const invoiceFields = {
+                storeId: inv.store_id,
+                invoiceDate: inv.invoice_date,
+                orderNo: inv.order_no,
+                orderStatus: inv.order_status,
+                customerName: inv.customername,
+                address1: inv.address1,
+                customerCity: inv.customercity,
+                customerCountry: inv.customercountry,
+                customerZipcode: inv.customerzipcode,
+                paymentMethod: inv.paymentmethod,
+                phoneNo: inv.phone_no,
+                paymentType: inv.payment_type,
+                couponCode: inv.coupon_code,
+                couponDiscount: inv.coupon_discount,
+                couponPrice: inv.coupon_price,
+                walletPrice: inv.wallet_price,
+                shippingCharge: inv.shipping_charge,
+                tax: inv.tax,
+            };
+
             if (invoice) {
-                // Update invoice fields
-                Object.assign(invoice, {
-                    orderNo: inv.order_no,
-                    orderStatus: inv.order_status,
-                    customerName: inv.customername,
-                    address1: inv.address1,
-                    customerCity: inv.customercity,
-                    customerCountry: inv.customercountry,
-                    customerZipcode: inv.customerzipcode,
-                    paymentMethod: inv.paymentmethod,
-                    phoneNo: inv.phone_no,
-                    paymentType: inv.payment_type,
-                    couponCode: inv.coupon_code,
-                    couponDiscount: inv.coupon_discount,
-                    couponPrice: inv.coupon_price,
-                    walletPrice: inv.wallet_price,
-                    shippingCharge: inv.shipping_charge,
-                    tax: inv.tax,
-                });
+                Object.assign(invoice, invoiceFields);
             } else {
                 invoice = this.invoiceRepository.create({
                     invoiceNo: inv.invoice_no,
-                    orderNo: inv.order_no,
-                    orderStatus: inv.order_status,
-                    customerName: inv.customername,
-                    address1: inv.address1,
-                    customerCity: inv.customercity,
-                    customerCountry: inv.customercountry,
-                    customerZipcode: inv.customerzipcode,
-                    paymentMethod: inv.paymentmethod,
-                    phoneNo: inv.phone_no,
-                    paymentType: inv.payment_type,
-                    couponCode: inv.coupon_code,
-                    couponDiscount: inv.coupon_discount,
-                    couponPrice: inv.coupon_price,
-                    walletPrice: inv.wallet_price,
-                    shippingCharge: inv.shipping_charge,
-                    tax: inv.tax,
+                    ...invoiceFields,
                 });
             }
 
             // Save invoice first to get the ID
             const savedInvoice = await this.invoiceRepository.save(invoice);
 
-            // Upsert items individually — new items are added, existing items (same itemNo) are updated
+            // Upsert items individually
             if (inv.items && inv.items.length > 0) {
                 for (const item of inv.items) {
                     const existingItem = await this.invoiceItemRepository.findOne({
                         where: { invoice: { id: savedInvoice.id }, itemNo: item.item_no },
                     });
 
+                    const itemData = {
+                        qty: item.qty,
+                        discountPrice: item.discount_price,
+                        price: item.price,
+                        itemName: item.item_name,
+                        total: item.total,
+                        isReturn: item.is_return,
+                        returnComment: item.return_comment,
+                    };
+
                     if (existingItem) {
-                        // Update existing item
-                        Object.assign(existingItem, {
-                            qty: item.qty,
-                            discountPrice: item.discount_price,
-                            price: item.price,
-                            itemName: item.item_name,
-                            total: item.total,
-                            isReturn: item.is_return,
-                            returnComment: item.return_comment,
-                        });
+                        Object.assign(existingItem, itemData);
                         await this.invoiceItemRepository.save(existingItem);
                     } else {
-                        // Create new item
                         const newItem = this.invoiceItemRepository.create({
                             invoice: savedInvoice,
                             itemNo: item.item_no,
-                            qty: item.qty,
-                            discountPrice: item.discount_price,
-                            price: item.price,
-                            itemName: item.item_name,
-                            total: item.total,
-                            isReturn: item.is_return,
-                            returnComment: item.return_comment,
+                            ...itemData,
                         });
                         await this.invoiceItemRepository.save(newItem);
                     }
@@ -167,7 +170,7 @@ export class EmedixWebhookService {
         this.logger.log(`Upserted ${invoices.length} invoice(s)`);
         return {
             received: invoices.length,
-            message: `Successfully upserted ${invoices.length} invoice(s)`,
+            message: `Successfully processed ${invoices.length} invoice(s)`,
         };
     }
 }
