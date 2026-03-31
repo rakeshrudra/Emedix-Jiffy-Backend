@@ -9,5 +9,5 @@ export default registerAs('database', (): TypeOrmModuleOptions => ({
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'emedix_jiffy',
     autoLoadEntities: true,
-    synchronize: process.env.NODE_ENV !== 'production', // Disable in production – use migrations instead
+    synchronize: process.env.NODE_ENV !== 'production',
 }));

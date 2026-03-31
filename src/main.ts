@@ -6,11 +6,18 @@ import { AppModule } from './app.module.js';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Enable CORS
+  // You can restrict the 'origin' for better security in production, e.g., origin: 'https://jiffy.emedix.com'
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
+
   // Enable global validation
   app.useGlobalPipes(
     new ValidationPipe({ transform: true, whitelist: true }),
   );
-
 
   // Swagger setup
   const config = new DocumentBuilder()
