@@ -5,14 +5,14 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true, nullable: true })
+  @Column({ unique: true })
   mobile_no: string;
 
   @Column({ nullable: true })
-  otpHash: string;
+  otpHash: string | null;
 
   @Column({ type: 'timestamp', nullable: true })
-  expiresAt: Date;
+  expiresAt: Date | null;
 
   @Column({ default: 0 })
   attemptCount: number;

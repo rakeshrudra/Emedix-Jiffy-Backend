@@ -21,21 +21,51 @@ POST /api/auth/verify-otp -
         Generate JWT access token
     If wrong:
         Increase attempt_count
-5. Send response - Success {
-                   "success": true,
-                   "message": "OTP verified",
-                   "data": {
-                     "accessToken": "jwt_token_here",
-                     "user": {
-                       "id": "u_123",
-                       "mobile": "9876543210"
-                     }
-                   }
-                 }
-                 - Fail {
-                          "success": false,
-                          "message": "Invalid or expired OTP"
-                        }
+5. Send response - Success.
+
+POST /api/auth/resend-otp
+get request body – mobile number
+Fetch user record for mobile number.
+Generate new 6 digit OTP.
+Hash OTP.
+Replace old otp_hash with new one.
+Update expires_at (5 minutes from now).
+Reset attempt_count = 0.
+Send OTP using SMS provider (Twilio / MSG91 / Fast2SMS etc).
+Send response
+{
+  "success": true,
+  "message": "otp resent successfully"
+}
+
+POST /api/auth/logout
+get request header – Authorization token
+Validate JWT token.
+If token valid → logout user on client side.
+No database update required.
+
+Send response:
+
+{
+  "success": true,
+  "message": "logout successful"
+}
+
+GET /api/auth/me
+get request header – Authorization token
+Validate JWT token.
+Extract mobile number or user id from token.
+Fetch user from database.
+
+Send response:
+
+{
+  "success": true,
+  "data": {
+    "mobile": "9876543210",
+    "created_at": "2026-04-01T10:30:00Z"
+  }
+}
 
 #DB models
 

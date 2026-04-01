@@ -5,7 +5,8 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { EmedixWebhookModule } from './emedix-webhook/emedix-webhook.module.js';
 import { AuthModule } from './auth/auth.module.js';
-import { User } from './auth/entities/user.entity.js';
+import { User } from './users/entities/user.entity.js';
+import { UsersModule } from './users/users.module';
 import databaseConfig from './database/database.config.js';
 
 @Module({
@@ -24,6 +25,7 @@ import databaseConfig from './database/database.config.js';
     }),
     EmedixWebhookModule,
     AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
