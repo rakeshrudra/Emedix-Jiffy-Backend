@@ -87,6 +87,24 @@ export class AddressesService {
     // Call Google Maps Forward Geocoding
     const geo = await this.mapsService.forwardGeocode(fullAddress);
 
+    // Business Logic: Check for Duplicate Addresses (same user, roughly same location)
+    const existingAddress = await this.addressRepository.findOne({
+      where: {
+        userId,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+      },
+    });
+
+    if (existingAddress) {
+      this.logger.log(`Duplicate address detected for user ${userId}: ${geo.formattedAddress}`);
+      return {
+        success: true,
+        message: 'Address already exists in your profile',
+        data: existingAddress,
+      };
+    }
+
     // Persist to DB
     const address = this.addressRepository.create({
       userId,
