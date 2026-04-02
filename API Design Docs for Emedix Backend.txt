@@ -1,79 +1,203 @@
-API Design Docs for Emedix Backend 
+API Design Docs for Emedix Backend (Current System)
 
-Users - 
-POST /api/auth/get-otp -
-1. get reqeust body - mobile number
-2. Validate mobile number format.
-3. Generate 6 digit OTP.
-4. Hash OTP (never store plain OTP).
-5. Store in DB/Redis with expiry (5 minutes).
-6. Send OTP using SMS provider (Twilio / MSG91 / Fast2SMS etc).
-7. Send response { success: true, message: "otp sent successfully" }
+Endpoints - 
 
-POST /api/auth/verify-otp - 
-1. get request body - mobile number and otp
-2. Fetch OTP record for mobile.
-3. Check expiry.
-4. Compare hashed OTP.
-    If correct:
-        Delete OTP record
-        Create / fetch user
-        Generate JWT access token
-    If wrong:
-        Increase attempt_count
-5. Send response - Success.
+POST /api/auth/get-otp
+1. Get request body: mobile_no
+2. Validate mobile number (10-digit).
+3. Generate 6-digit OTP.
+4. Hash OTP with bcrypt.
+5. Store in Redis with 300-second (5 min) expiry.
+    - Key: "otp:{mobile_no}" | Value: Hashed OTP.
+6. Send OTP using Twilio API.
+7. Send Response: { "success": true, "message": "otp sent successfully" }
+
+POST /api/auth/verify-otp
+1. Get request body: mobile_no and otp.
+2. Fetch hashed OTP from Redis for the given mobile_no.
+3. Check if record exists (if not, OTP expired or not requested).
+4. Compare submitted OTP with hashed OTP from Redis.
+    If Correct:
+        Delete OTP from Redis.
+        Check MySQL for User with mobile_no.
+        If User doesn't exist: Create new User in MySQL (NO GHOST USERS before this step).
+        Generate JWT Access Token.
+    If Incorrect:
+        Throw Unauthorized error (Invalid OTP).
+5. Send Response: { "success": true, "data": { "accessToken": "...", "user": { "id": "...", "mobile_no": "..." } } }
 
 POST /api/auth/resend-otp
-get request body – mobile number
-Fetch user record for mobile number.
-Generate new 6 digit OTP.
-Hash OTP.
-Replace old otp_hash with new one.
-Update expires_at (5 minutes from now).
-Reset attempt_count = 0.
-Send OTP using SMS provider (Twilio / MSG91 / Fast2SMS etc).
-Send response
-{
-  "success": true,
-  "message": "otp resent successfully"
-}
-
-POST /api/auth/logout
-get request header – Authorization token
-Validate JWT token.
-If token valid → logout user on client side.
-No database update required.
-
-Send response:
-
-{
-  "success": true,
-  "message": "logout successful"
-}
+1. Get request body: mobile_no.
+2. Re-trigger "get-otp" logic.
+3. Redis automatically overwrites the old OTP with a fresh expiry.
+4. Send new OTP via Twilio.
+5. Send Response: { "success": true, "message": "otp sent successfully" }
 
 GET /api/auth/me
-get request header – Authorization token
-Validate JWT token.
-Extract mobile number or user id from token.
-Fetch user from database.
-
-Send response:
-
+1. Get request header: Bearer [JWT_TOKEN].
+2. Validate JWT token using JwtAuthGuard.
+3. Extract user ID (sub) from token payload.
+4. Fetch User profile from MySQL database.
+5. Send Response:
 {
   "success": true,
   "data": {
-    "mobile": "9876543210",
-    "created_at": "2026-04-01T10:30:00Z"
+    "id": "...",
+    "mobile_no": "9876543210",
+    "created_at": "..."
   }
 }
 
-#DB models
+1️⃣ Get User Current Location
+POST /api/address/get-location
+Request Body
+{
+  "latitude": 17.385044,
+  "longitude": 78.486671
+}
+Steps
+Get request body:
+latitude
+longitude
+Validate:
+latitude range (-90 to 90)
+longitude range (-180 to 180)
+Call Google Maps Geocoding API (Reverse Geocoding)
+lat,lng → actual address
+Extract structured fields:
+formatted_address
+city
+state
+country
+pincode
+Insert into addresses table
 
-users table.
+Fields stored:
+
+user_id
+formatted_address
+city
+state
+country
+pincode
+latitude
+longitude
+source = "gps"
+Send response
+{
+  "success": true,
+  "data": {
+    "formatted_address": "MG Road, Hyderabad, Telangana, India",
+    "city": "Hyderabad",
+    "state": "Telangana",
+    "pincode": "500001",
+    "latitude": 17.385044,
+    "longitude": 78.486671
+  }
+}
+Production Errors
+
+Possible failures:
+
+Invalid lat/long
+Google API quota exceeded
+Google API network timeout
+Location in ocean / invalid region
+
+Return:
+
+{
+  "success": false,
+  "error": "Unable to resolve address from location"
+}
+2️⃣ Add Address Manually
+POST /api/address/add
+Request Body
+{
+  "address_line": "12 MG Road",
+  "city": "Hyderabad",
+  "state": "Telangana",
+  "pincode": "500001"
+}
+Steps
+Validate input fields
+
+Required:
+
+address_line
+city
+state
+pincode
+Build full address string
+"12 MG Road Hyderabad Telangana 500001"
+Call Google Maps Geocoding API (Forward Geocoding)
+address → lat,lng
+Validate response
+
+Reject if:
+
+ZERO_RESULTS
+Extract:
+latitude
+longitude
+formatted_address
+Insert into addresses table
+source = "manual"
+Response
+{
+  "success": true,
+  "data": {
+    "formatted_address": "12 MG Road, Hyderabad, Telangana 500001",
+    "latitude": 17.38,
+    "longitude": 78.48
+  }
+}
+Production Errors
+
+Possible cases:
+
+INVALID_ADDRESS
+ADDRESS_NOT_FOUND
+GEOCODING_TIMEOUT
+
+#Database Models (MySQL)
+
+users table
 ---------
-mobile
-otp_hash
-expires_at
-attempt_count
-created_at
+id (UUID)
+mobile_no (Unique)
+createdAt (Timestamp)
+---------
+
+#Temporary Store (Redis)
+---------
+key: "otp:{mobile_no}"
+value: bcrypt_hash
+expiry: 300s
+---------
+
+addresses table
+---------
+id (UUID)
+user_id (FK to users.id)
+label (String)
+address_line_1 (String)
+address_line_2 (String)
+city (String)
+state (String)
+pincode (String)
+country (String)
+latitude (Decimal)
+longitude (Decimal)
+createdAt (Timestamp)
+---------
+
+stores table
+id (UUID)
+store_id
+store_name
+address
+latitude
+longitude
+created_at (Timestamp)
 ---------

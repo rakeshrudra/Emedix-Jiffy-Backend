@@ -8,18 +8,6 @@ export class User {
   @Column({ unique: true })
   mobile_no: string;
 
-  @Column({ nullable: true })
-  otpHash: string | null;
-
-  @Column({ type: 'timestamp', nullable: true })
-  expiresAt: Date | null;
-
-  @Column({ default: 0 })
-  attemptCount: number;
-
   @CreateDateColumn()
   createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

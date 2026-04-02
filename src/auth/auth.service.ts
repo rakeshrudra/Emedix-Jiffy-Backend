@@ -1,9 +1,10 @@
-import { Injectable, InternalServerErrorException, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, BadRequestException, UnauthorizedException, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UsersService } from '../users/users.service.js';
+import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as twilio from 'twilio';
+import Redis from 'ioredis';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +12,7 @@ export class AuthService {
     private twilioClient: twilio.Twilio;
 
     constructor(
+        @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
         private readonly usersService: UsersService,
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
@@ -24,53 +26,47 @@ export class AuthService {
     async getOtp(mobile_no: string) {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpHash = await bcrypt.hash(otp, 10);
-        const expiresAt = new Date();
-        expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
-        let user = await this.usersService.findByMobile(mobile_no);
-        if (!user) {
-            user = await this.usersService.create({ mobile_no });
-        }
-
-        user.otpHash = otpHash;
-        user.expiresAt = expiresAt;
-        user.attemptCount = 0;
-        await this.usersService.save(user);
-
+        // Store in Redis instead of MySQL - with 5 minute expiry
         try {
+            await this.redisClient.set(`otp:${mobile_no}`, otpHash, 'EX', 300);
+
+            // Send SMS via Twilio
             await this.twilioClient.messages.create({
                 body: `Your Emedix Jiffy OTP is ${otp}. It will expire in 5 minutes.`,
                 from: this.configService.get<string>('TWILIO_PHONE_NUMBER'),
                 to: `+91${mobile_no}`,
             });
+
             return { success: true, message: 'OTP sent successfully' };
         } catch (error) {
-            this.logger.error(`Failed to send OTP to ${mobile_no}: ${error.message}`);
-            throw new InternalServerErrorException('Error sending SMS, please try again.');
+            this.logger.error(`Failed to handle OTP for ${mobile_no}: ${error.message}`);
+            throw new InternalServerErrorException('Mobile number is Invalid or service unavailable');
         }
     }
 
     async verifyOtp(mobile_no: string, otp: string) {
-        const user = await this.usersService.findByMobile(mobile_no);
+        // 1. Check Redis for OTP
+        const cachedHash = await this.redisClient.get(`otp:${mobile_no}`);
 
-        if (!user || !user.otpHash || !user.expiresAt) {
-            throw new BadRequestException('No active OTP session found.');
+        if (!cachedHash) {
+            throw new BadRequestException('OTP has expired or never requested.');
         }
 
-        if (new Date() > user.expiresAt) {
-            throw new BadRequestException('OTP has expired.');
-        }
-        const isMatch = await bcrypt.compare(otp, user.otpHash);
+        // 2. Verify OTP Match
+        const isMatch = await bcrypt.compare(otp, cachedHash);
         if (!isMatch) {
-            user.attemptCount += 1;
-            await this.usersService.save(user);
             throw new UnauthorizedException('Invalid OTP.');
         }
 
-        user.otpHash = null;
-        user.expiresAt = null;
-        user.attemptCount = 0;
-        await this.usersService.save(user);
+        // 3. SUCCESS - Now prove real identity and create/fetch user in DB
+        let user = await this.usersService.findByMobile(mobile_no);
+        if (!user) {
+            user = await this.usersService.create({ mobile_no });
+        }
+
+        // 4. Cleanup Redis
+        await this.redisClient.del(`otp:${mobile_no}`);
 
         const payload = { sub: user.id, mobile_no: user.mobile_no };
         return {
@@ -87,32 +83,8 @@ export class AuthService {
     }
 
     async resendOtp(mobile_no: string) {
-        const user = await this.usersService.findByMobile(mobile_no);
-        if (!user) {
-            throw new BadRequestException('User not found.');
-        }
-
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpHash = await bcrypt.hash(otp, 10);
-        const expiresAt = new Date();
-        expiresAt.setMinutes(expiresAt.getMinutes() + 5);
-
-        user.otpHash = otpHash;
-        user.expiresAt = expiresAt;
-        user.attemptCount = 0;
-        await this.usersService.save(user);
-
-        try {
-            await this.twilioClient.messages.create({
-                body: `Your Emedix Jiffy OTP is ${otp}. It will expire in 5 minutes.`,
-                from: this.configService.get<string>('TWILIO_PHONE_NUMBER'),
-                to: `+91${mobile_no}`,
-            });
-            return { success: true, message: 'OTP resent successfully' };
-        } catch (error) {
-            this.logger.error(`Resend failed for ${mobile_no}: ${error.message}`);
-            throw new InternalServerErrorException('Error sending SMS.');
-        }
+        // Just call getOtp - Redis will naturally overwrite the existing key
+        return this.getOtp(mobile_no);
     }
 
     async getProfile(userId: string) {
