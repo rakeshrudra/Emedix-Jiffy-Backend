@@ -1,10 +1,10 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiHeader } from '@nestjs/swagger';
-import { EmedixWebhookService } from './emedix-webhook.service.js';
-import { ProductDto } from './dto/product.dto.js';
-import { ProductStockDto } from './dto/product-stock.dto.js';
-import { InvoiceUploadDto } from './dto/invoice.dto.js';
-import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
+import { EmedixWebhookService } from './emedix-webhook.service';
+import { ProductDto } from './dto/product.dto';
+import { ProductStockDto } from './dto/product-stock.dto';
+import { InvoiceUploadDto } from './dto/invoice.dto';
+import { ApiKeyGuard } from '../common/guards/api-key.guard';
 
 @ApiTags('emedix-webhook')
 @ApiHeader({ name: 'x-api-key', description: 'API key for authentication', required: true })

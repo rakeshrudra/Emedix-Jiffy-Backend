@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { EmedixWebhookController } from './emedix-webhook.controller.js';
-import { EmedixWebhookService } from './emedix-webhook.service.js';
-import { Product } from './entities/product.entity.js';
-import { Invoice } from './entities/invoice.entity.js';
-import { InvoiceItem } from './entities/invoice-item.entity.js';
+import { EmedixWebhookController } from './emedix-webhook.controller';
+import { EmedixWebhookService } from './emedix-webhook.service';
+import { Product } from './entities/product.entity';
+import { Invoice } from './entities/invoice.entity';
+import { InvoiceItem } from './entities/invoice-item.entity';
 
 @Module({
     imports: [TypeOrmModule.forFeature([Product, Invoice, InvoiceItem])],

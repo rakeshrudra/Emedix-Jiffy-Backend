@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Product } from './entities/product.entity.js';
-import { Invoice } from './entities/invoice.entity.js';
-import { InvoiceItem } from './entities/invoice-item.entity.js';
-import { ProductDto } from './dto/product.dto.js';
-import { ProductStockDto } from './dto/product-stock.dto.js';
-import { InvoiceDto } from './dto/invoice.dto.js';
+import { Product } from './entities/product.entity';
+import { Invoice } from './entities/invoice.entity';
+import { InvoiceItem } from './entities/invoice-item.entity';
+import { ProductDto } from './dto/product.dto';
+import { ProductStockDto } from './dto/product-stock.dto';
+import { InvoiceDto } from './dto/invoice.dto';
 
 @Injectable()
 export class EmedixWebhookService {
