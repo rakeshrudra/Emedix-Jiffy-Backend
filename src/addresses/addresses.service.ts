@@ -2,13 +2,17 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { Address } from './entities/address.entity';
 import { MapsService } from '../maps/maps.service';
-import { GetLocationDto } from './dto/get-location.dto';
-import { AddAddressDto } from './dto/add-address.dto';
+import { GeocodeDto } from './dto/geocode.dto';
+import { SaveAddressDto } from './dto/save-address.dto';
+import { UpdateAddressDto } from './dto/update-address.dto';
+
+const MAX_ADDRESSES_PER_USER = 5;
 
 @Injectable()
 export class AddressesService {
@@ -18,48 +22,17 @@ export class AddressesService {
     @InjectRepository(Address)
     private readonly addressRepository: Repository<Address>,
     private readonly mapsService: MapsService,
-  ) { }
+  ) {}
 
   /**
-   * Get User Current Location (Reverse Geocoding)
-   * POST /api/address/get-location
+   * Forward-geocode a free-text query and return a preview.
+   * Does NOT save to DB — user must confirm and call saveAddress.
    */
-  async getLocation(userId: string, geoLocationDto: GetLocationDto) {
-    const { latitude, longitude, label } = geoLocationDto;
-
-    // Validate coordinate ranges (double-check beyond class-validator)
-    if (latitude < -90 || latitude > 90) {
-      throw new BadRequestException('Latitude must be between -90 and 90');
-    }
-    if (longitude < -180 || longitude > 180) {
-      throw new BadRequestException('Longitude must be between -180 and 180');
-    }
-
-    // Call Google Maps Reverse Geocoding
-    const geo = await this.mapsService.reverseGeocode(latitude, longitude);
-
-    // Persist to DB
-    const address = this.addressRepository.create({
-      userId,
-      label: label ?? null,
-      addressLine1: geo.formattedAddress,
-      formattedAddress: geo.formattedAddress,
-      city: geo.city,
-      state: geo.state,
-      country: geo.country,
-      pincode: geo.pincode,
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-      source: 'gps',
-    });
-
-    await this.addressRepository.save(address);
-    this.logger.log(`GPS address saved for user ${userId}: ${geo.formattedAddress}`);
-
+  async geocodeQuery(dto: GeocodeDto) {
+    const geo = await this.mapsService.forwardGeocode(dto.query);
     return {
       success: true,
       data: {
-        id: address.id,
         formatted_address: geo.formattedAddress,
         city: geo.city,
         state: geo.state,
@@ -67,100 +40,151 @@ export class AddressesService {
         country: geo.country,
         latitude: geo.latitude,
         longitude: geo.longitude,
-        source: 'gps',
       },
     };
   }
 
   /**
-   * Add Address Manually (Forward Geocoding)
-   * POST /api/address/add
+   * Save a confirmed address (GPS or manual).
+   * Frontend has already resolved coordinates before calling this.
+   * Enforces max 5 addresses per user.
+   * First address saved is automatically set as default.
    */
-  async addAddress(userId: string, addAddressDto: AddAddressDto) {
-    const { address_line, city, state, pincode, country, label, address_line_2 } = addAddressDto;
+  async saveAddress(userId: string, dto: SaveAddressDto) {
+    const existingCount = await this.addressRepository.count({ where: { userId } });
 
-    // Build full query string for Google Maps
-    const fullAddress = [address_line, city, state, pincode, country ?? 'India']
-      .filter(Boolean)
-      .join(', ');
-
-    // Call Google Maps Forward Geocoding
-    const geo = await this.mapsService.forwardGeocode(fullAddress);
-
-    // Business Logic: Check for Duplicate Addresses (same user, roughly same location)
-    const existingAddress = await this.addressRepository.findOne({
-      where: {
-        userId,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-      },
-    });
-
-    if (existingAddress) {
-      this.logger.log(`Duplicate address detected for user ${userId}: ${geo.formattedAddress}`);
-      return {
-        success: true,
-        message: 'Address already exists in your profile',
-        data: existingAddress,
-      };
+    if (existingCount >= MAX_ADDRESSES_PER_USER) {
+      throw new BadRequestException(
+        `You can save up to ${MAX_ADDRESSES_PER_USER} addresses. Please delete one before adding a new one.`,
+      );
     }
 
-    // Persist to DB
+    // Prevent near-duplicate: same lat/lng already saved for this user
+    const duplicate = await this.addressRepository.findOne({
+      where: { userId, latitude: dto.latitude, longitude: dto.longitude },
+    });
+    if (duplicate) {
+      return { success: true, message: 'Address already saved', data: this.format(duplicate) };
+    }
+
+    // First address for this user is always default
+    const isDefault = existingCount === 0 ? true : (dto.is_default ?? false);
+
+    // If this one is being set as default, clear existing default first
+    if (isDefault) {
+      await this.clearDefault(userId);
+    }
+
     const address = this.addressRepository.create({
       userId,
-      label: label ?? null,
-      addressLine1: address_line,
-      addressLine2: address_line_2 ?? null,
-      formattedAddress: geo.formattedAddress,
-      city: geo.city || city,
-      state: geo.state || state,
-      country: geo.country || country || 'India',
-      pincode: geo.pincode || pincode,
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-      source: 'manual',
+      label: dto.label ?? null,
+      addressLine1: dto.address_line_1,
+      addressLine2: dto.address_line_2 ?? null,
+      formattedAddress: dto.formatted_address,
+      city: dto.city,
+      state: dto.state,
+      pincode: dto.pincode,
+      country: dto.country ?? 'India',
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      source: dto.source ?? 'manual',
+      isDefault,
     });
 
-    await this.addressRepository.save(address);
-    this.logger.log(`Manual address saved for user ${userId}: ${geo.formattedAddress}`);
+    const saved = await this.addressRepository.save(address);
+    this.logger.log(`Address saved for user ${userId}: ${saved.formattedAddress}`);
 
-    return {
-      success: true,
-      data: {
-        id: address.id,
-        formatted_address: geo.formattedAddress,
-        city: address.city,
-        state: address.state,
-        pincode: address.pincode,
-        country: address.country,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-        source: 'manual',
-      }
-    };
+    return { success: true, data: this.format(saved) };
   }
 
   /**
-   * Get all addresses for a user
+   * List all saved addresses for the authenticated user.
+   * Default address is always returned first.
    */
-  async getUserAddresses(userId: string): Promise<Address[]> {
-    return this.addressRepository.find({
+  async getUserAddresses(userId: string) {
+    const addresses = await this.addressRepository.find({
       where: { userId },
-      order: { createdAt: 'DESC' },
+      order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
+    return { success: true, data: addresses.map(this.format) };
   }
 
   /**
-   * Delete an address (must belong to the requesting user)
+   * Update label or set as default.
+   * Ownership is enforced — address must belong to the requesting user.
    */
-  async removeAddress(userId: string, addressId: string) {
-    const address = await this.addressRepository.findOne({ where: { id: addressId, userId } });
+  async updateAddress(userId: string, addressId: string, dto: UpdateAddressDto) {
+    const address = await this.findOwned(userId, addressId);
 
-    if (!address) {
-      throw new BadRequestException('Address not found or does not belong to user');
+    if (dto.label !== undefined) address.label = dto.label;
+
+    if (dto.is_default === true && !address.isDefault) {
+      await this.clearDefault(userId, addressId);
+      address.isDefault = true;
     }
 
+    const updated = await this.addressRepository.save(address);
+    return { success: true, data: this.format(updated) };
+  }
+
+  /**
+   * Delete an address.
+   * If the deleted address was default, promote the most recent remaining one.
+   */
+  async removeAddress(userId: string, addressId: string) {
+    const address = await this.findOwned(userId, addressId);
+    const wasDefault = address.isDefault;
+
     await this.addressRepository.remove(address);
+
+    if (wasDefault) {
+      const next = await this.addressRepository.findOne({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+      });
+      if (next) {
+        await this.addressRepository.update(next.id, { isDefault: true });
+      }
+    }
+
     return { success: true, message: 'Address removed successfully' };
+  }
+
+  // ─── Private helpers ────────────────────────────────────────────────────────
+
+  private async findOwned(userId: string, addressId: string): Promise<Address> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId, userId },
+    });
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
+    return address;
+  }
+
+  private async clearDefault(userId: string, excludeId?: string): Promise<void> {
+    const where: any = { userId, isDefault: true };
+    if (excludeId) where.id = Not(excludeId);
+    await this.addressRepository.update(where, { isDefault: false });
+  }
+
+  private format(a: Address) {
+    return {
+      id: a.id,
+      label: a.label,
+      address_line_1: a.addressLine1,
+      address_line_2: a.addressLine2,
+      formatted_address: a.formattedAddress,
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+      country: a.country,
+      latitude: Number(a.latitude),
+      longitude: Number(a.longitude),
+      source: a.source,
+      is_default: a.isDefault,
+      created_at: a.createdAt,
+      updated_at: a.updatedAt,
+    };
   }
 }

@@ -5,16 +5,19 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   JoinColumn,
+  UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
-export type AddressSource = 'gps' | 'manual';
+export type AddressLabel = 'Home' | 'Work' | 'Other';
 
 @Entity('addresses')
 export class Address {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column({ name: 'user_id' })
   userId: string;
 
@@ -22,8 +25,12 @@ export class Address {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({ nullable: true })
-  label: string;
+  @Column({
+    type: 'enum',
+    enum: ['Home', 'Work', 'Other'],
+    nullable: true,
+  })
+  label: AddressLabel;
 
   @Column({ name: 'address_line_1', nullable: true })
   addressLine1: string;
@@ -31,7 +38,7 @@ export class Address {
   @Column({ name: 'address_line_2', nullable: true })
   addressLine2: string;
 
-  @Column({ name: 'formatted_address' })
+  @Column({ name: 'formatted_address', type: 'text' })
   formattedAddress: string;
 
   @Column()
@@ -52,10 +59,15 @@ export class Address {
   @Column('decimal', { precision: 10, scale: 7 })
   longitude: number;
 
-  /** 'gps' = reverse geocoded from coordinates | 'manual' = forward geocoded from text */
-  @Column({ type: 'varchar', enum: ['gps', 'manual'], default: 'manual' })
-  source: AddressSource;
+  @Column({ type: 'enum', enum: ['gps', 'manual'], default: 'manual' })
+  source: 'gps' | 'manual';
+
+  @Column({ name: 'is_default', default: false })
+  isDefault: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
