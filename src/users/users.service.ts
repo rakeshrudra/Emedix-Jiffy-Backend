@@ -8,7 +8,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-  ) { }
+  ) {}
 
   async findByMobile(mobile_no: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { mobile_no } });
@@ -25,5 +25,10 @@ export class UsersService {
 
   async save(user: User): Promise<User> {
     return this.userRepository.save(user);
+  }
+
+  async updateProfile(userId: string, fields: Partial<Pick<User, 'name' | 'firebase_uid'>>): Promise<User> {
+    await this.userRepository.update(userId, fields);
+    return this.userRepository.findOne({ where: { id: userId } });
   }
 }

@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -13,120 +14,99 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { AddressesService } from './addresses.service';
-import { GetLocationDto } from './dto/get-location.dto';
-import { AddAddressDto } from './dto/add-address.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AddressesService } from './addresses.service';
+import { GeocodeDto } from './dto/geocode.dto';
+import { SaveAddressDto } from './dto/save-address.dto';
+import { UpdateAddressDto } from './dto/update-address.dto';
 
 @ApiTags('Addresses')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('address')
+@Controller('api/address')
 export class AddressesController {
   constructor(private readonly addressesService: AddressesService) { }
 
   /**
-   * POST /api/address/get-location
-   * Reverse-geocodes GPS coordinates and saves the resolved address.
+   * POST /api/address/geocode
+   * Forward-geocodes a typed query and returns a preview.
+   * Does NOT save. Used to populate the address form before user confirms.
    */
-  @Post('get-location')
+  @Post('geocode')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get address from current GPS location',
-    description: 'Accepts latitude & longitude, calls Google Maps reverse geocoding, and saves the resolved address for the authenticated user.',
+    summary: 'Geocode a typed address query (preview only, does not save)',
+    description:
+      'Accepts a free-text address query, calls Google Maps forward geocoding, and returns the resolved address for the user to confirm. Call POST /api/address to save after confirmation.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Address successfully resolved and saved',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          id: 'uuid',
-          formatted_address: 'MG Road, Hyderabad, Telangana, India',
-          city: 'Hyderabad',
-          state: 'Telangana',
-          pincode: '500001',
-          country: 'India',
-          latitude: 17.385044,
-          longitude: 78.486671,
-          source: 'gps',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Unable to resolve address from location',
-    schema: { example: { success: false, error: 'Unable to resolve address from location' } },
-  })
-  async getLocation(@Req() req: any, @Body() geoLocationDto: GetLocationDto,) {
-    return this.addressesService.getLocation(req.user.sub, geoLocationDto);
+  @ApiResponse({ status: 200, description: 'Address preview resolved successfully' })
+  @ApiResponse({ status: 500, description: 'Address not found or geocoding failed' })
+  async geocode(@Body() dto: GeocodeDto) {
+    return this.addressesService.geocodeQuery(dto);
   }
 
   /**
-   * POST /api/address/add
-   * Forward-geocodes a manually typed address and saves it.
+   * POST /api/address
+   * Saves a confirmed address to the user's address book.
+   * GPS addresses: frontend resolves coords via expo-location, sends all fields here.
+   * Manual addresses: user confirms the geocode preview, then calls this to save.
    */
-  @Post('add')
+  @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Add address manually',
-    description: 'Accepts a typed address, calls Google Maps forward geocoding to obtain lat/lng, and saves the validated address for the authenticated user.',
+    summary: 'Save a confirmed address (GPS or manual)',
+    description:
+      'Persists the address after user confirmation. Max 5 addresses per user. First address is auto-set as default.',
   })
-  @ApiResponse({
-    status: 201,
-    description: 'Address successfully added',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          id: 'uuid',
-          formatted_address: '12 MG Road, Hyderabad, Telangana 500001, India',
-          city: 'Hyderabad',
-          state: 'Telangana',
-          pincode: '500001',
-          country: 'India',
-          latitude: 17.38,
-          longitude: 78.48,
-          source: 'manual',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Address not found or geocoding failed',
-    schema: { example: { success: false, error: 'Address not found. Please check the address and try again.' } },
-  })
-  async addAddress(@Req() req: any, @Body() addAddressDto: AddAddressDto) {
-    return this.addressesService.addAddress(req.user.sub, addAddressDto);
+  @ApiResponse({ status: 201, description: 'Address saved successfully' })
+  @ApiResponse({ status: 400, description: 'Max address limit reached or duplicate address' })
+  async saveAddress(@Req() req: any, @Body() dto: SaveAddressDto) {
+    return this.addressesService.saveAddress(req.user.sub, dto);
   }
 
   /**
    * GET /api/address
    * Returns all saved addresses for the authenticated user.
+   * Default address is always returned first.
    */
-  @Get(':userId')
-  @ApiOperation({ summary: 'Get all addresses for the current user' })
-  @ApiResponse({ status: 200, description: 'List of saved addresses' })
-  async getMyAddresses(@Param('userId') userId: string) {
-    const addresses = await this.addressesService.getUserAddresses(userId);
-    return { success: true, data: addresses };
+  @Get()
+  @ApiOperation({ summary: 'Get all saved addresses for the authenticated user' })
+  @ApiResponse({ status: 200, description: 'Address list returned' })
+  async getMyAddresses(@Req() req: any) {
+    return this.addressesService.getUserAddresses(req.user.sub);
+  }
+
+  /**
+   * PATCH /api/address/:id
+   * Update label (Home / Work / Other) or set as default delivery address.
+   */
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update address label or set as default' })
+  @ApiParam({ name: 'id', description: 'Address UUID' })
+  @ApiResponse({ status: 200, description: 'Address updated' })
+  @ApiResponse({ status: 404, description: 'Address not found' })
+  async updateAddress(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateAddressDto,
+  ) {
+    return this.addressesService.updateAddress(req.user.sub, id, dto);
   }
 
   /**
    * DELETE /api/address/:id
-   * Deletes a saved address (must belong to the requesting user).
+   * Deletes a saved address. If it was the default, the next most recent is promoted.
    */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete a saved address by ID' })
+  @ApiOperation({ summary: 'Delete a saved address' })
+  @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiResponse({ status: 200, description: 'Address deleted successfully' })
-  @ApiResponse({ status: 400, description: 'Address not found or does not belong to user' })
+  @ApiResponse({ status: 404, description: 'Address not found' })
   async removeAddress(@Req() req: any, @Param('id') id: string) {
     return this.addressesService.removeAddress(req.user.sub, id);
   }

@@ -1,105 +1,163 @@
-import { Injectable, InternalServerErrorException, Logger, BadRequestException, UnauthorizedException, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { UsersService } from '../users/users.service';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
-import * as twilio from 'twilio';
-import Redis from 'ioredis';
+import { ConfigService } from '@nestjs/config';
+import * as admin from 'firebase-admin';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthService {
-    private readonly logger = new Logger(AuthService.name);
-    private twilioClient: twilio.Twilio;
+  private readonly logger = new Logger(AuthService.name);
+  private readonly refreshSecret: string;
 
-    constructor(
-        @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
-        private readonly usersService: UsersService,
-        private readonly jwtService: JwtService,
-        private readonly configService: ConfigService,
-    ) {
-        this.twilioClient = twilio.default(
-            this.configService.get<string>('TWILIO_ACCOUNT_SID'),
-            this.configService.get<string>('TWILIO_AUTH_TOKEN'),
-        )
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {
+    this.refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+  }
+
+  /**
+   * POST /api/auth/verify-token
+   * 1. Verify Firebase ID Token
+   * 2. Find or create user by phone number
+   * 3. Store firebase_uid for account-merge edge case handling
+   * 4. Return short-lived access token + long-lived refresh token
+   */
+  async verifyFirebaseToken(idToken: string) {
+    let decodedToken: admin.auth.DecodedIdToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+      this.logger.error(`Firebase token verification failed: ${error.message}`);
+      throw new UnauthorizedException('Invalid or expired Firebase token');
     }
 
-    async getOtp(mobile_no: string) {
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpHash = await bcrypt.hash(otp, 10);
-
-        // Store in Redis instead of MySQL - with 5 minute expiry
-        try {
-            await this.redisClient.set(`otp:${mobile_no}`, otpHash, 'EX', 300);
-
-            // Send SMS via Twilio
-            await this.twilioClient.messages.create({
-                body: `Your Emedix Jiffy OTP is ${otp}. It will expire in 5 minutes.`,
-                from: this.configService.get<string>('TWILIO_PHONE_NUMBER'),
-                to: `+91${mobile_no}`,
-            });
-
-            return { success: true, message: 'OTP sent successfully' };
-        } catch (error) {
-            this.logger.error(`Failed to handle OTP for ${mobile_no}: ${error.message}`);
-            throw new InternalServerErrorException('Mobile number is Invalid or service unavailable');
-        }
+    const phoneNumber = decodedToken.phone_number;
+    if (!phoneNumber) {
+      throw new UnauthorizedException('Token does not contain a phone number. Ensure phone auth is used.');
     }
 
-    async verifyOtp(mobile_no: string, otp: string) {
-        // 1. Check Redis for OTP
-        const cachedHash = await this.redisClient.get(`otp:${mobile_no}`);
+    const mobile_no = phoneNumber.replace(/^\+91/, '');
+    const firebase_uid = decodedToken.uid;
 
-        if (!cachedHash) {
-            throw new BadRequestException('OTP has expired or never requested.');
-        }
+    this.logger.log(`Firebase token verified for: ${phoneNumber}`);
 
-        // 2. Verify OTP Match
-        const isMatch = await bcrypt.compare(otp, cachedHash);
-        if (!isMatch) {
-            throw new UnauthorizedException('Invalid OTP.');
-        }
+    // Find existing user or create new one
+    let user = await this.usersService.findByMobile(mobile_no);
+    const is_new_user = !user;
 
-        // 3. SUCCESS - Now prove real identity and create/fetch user in DB
-        let user = await this.usersService.findByMobile(mobile_no);
-        if (!user) {
-            user = await this.usersService.create({ mobile_no });
-        }
-
-        // 4. Cleanup Redis
-        await this.redisClient.del(`otp:${mobile_no}`);
-
-        const payload = { sub: user.id, mobile_no: user.mobile_no };
-        return {
-            success: true,
-            message: 'OTP verified',
-            data: {
-                accessToken: this.jwtService.sign(payload),
-                user: {
-                    id: user.id,
-                    mobile_no: user.mobile_no,
-                }
-            }
-        }
+    if (!user) {
+      user = await this.usersService.create({ mobile_no, firebase_uid });
+      this.logger.log(`New user created for mobile: ${mobile_no}`);
+    } else if (!user.firebase_uid) {
+      // Back-fill firebase_uid for users who registered before this field existed
+      user = await this.usersService.updateProfile(user.id, { firebase_uid });
     }
 
-    async resendOtp(mobile_no: string) {
-        // Just call getOtp - Redis will naturally overwrite the existing key
-        return this.getOtp(mobile_no);
+    const tokens = this.issueTokens(user.id, user.mobile_no);
+
+    return {
+      success: true,
+      message: 'Authentication successful',
+      data: {
+        ...tokens,
+        is_new_user,
+        user: {
+          id: user.id,
+          mobile_no: user.mobile_no,
+          name: user.name ?? null,
+        },
+      },
+    };
+  }
+
+  /**
+   * POST /api/auth/refresh
+   * Validates the refresh token and returns a fresh access token.
+   */
+  async refreshAccessToken(refreshToken: string) {
+    let payload: any;
+    try {
+      payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.refreshSecret,
+      });
+    } catch {
+      throw new UnauthorizedException('Refresh token is invalid or expired. Please log in again.');
     }
 
-    async getProfile(userId: string) {
-        const user = await this.usersService.findById(userId);
-        if (!user) {
-            throw new UnauthorizedException('User not found');
-        }
-        return {
-            success: true,
-            message: 'User profile fetched successfully',
-            data: {
-                id: user.id,
-                mobile_no: user.mobile_no,
-                created_at: user.createdAt,
-            }
-        }
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Invalid token type');
     }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    return {
+      success: true,
+      data: {
+        access_token: this.jwtService.sign(
+          { sub: user.id, mobile_no: user.mobile_no, type: 'access' },
+          { expiresIn: '15m' },
+        ),
+      },
+    };
+  }
+
+  /**
+   * PATCH /api/auth/profile
+   * Updates the authenticated user's name.
+   */
+  async updateProfile(userId: string, name: string) {
+    const user = await this.usersService.updateProfile(userId, { name: name.trim() });
+    return {
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        id: user.id,
+        mobile_no: user.mobile_no,
+        name: user.name,
+      },
+    };
+  }
+
+  /**
+   * GET /api/auth/me
+   */
+  async getProfile(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    return {
+      success: true,
+      message: 'User profile fetched successfully',
+      data: {
+        id: user.id,
+        mobile_no: user.mobile_no,
+        name: user.name ?? null,
+        created_at: user.createdAt,
+      },
+    };
+  }
+
+  // ─── Private ────────────────────────────────────────────────────────────────
+
+  private issueTokens(userId: string, mobile_no: string) {
+    const access_token = this.jwtService.sign(
+      { sub: userId, mobile_no, type: 'access' },
+      { expiresIn: '15m' },
+    );
+
+    const refresh_token = this.jwtService.sign(
+      { sub: userId, type: 'refresh' },
+      { secret: this.refreshSecret, expiresIn: '30d' },
+    );
+
+    return { access_token, refresh_token };
+  }
 }

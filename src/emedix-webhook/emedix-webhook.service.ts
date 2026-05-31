@@ -7,6 +7,8 @@ import { InvoiceItem } from './entities/invoice-item.entity';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
 import { InvoiceDto } from './dto/invoice.dto';
+import { OrdersService } from '../orders/orders.service';
+import { OrderStatusWebhookDto } from '../orders/dto/order-status-webhook.dto';
 
 @Injectable()
 export class EmedixWebhookService {
@@ -19,6 +21,7 @@ export class EmedixWebhookService {
         private readonly invoiceRepository: Repository<Invoice>,
         @InjectRepository(InvoiceItem)
         private readonly invoiceItemRepository: Repository<InvoiceItem>,
+        private readonly ordersService: OrdersService,
     ) { }
 
     // ── Product Add / Update ──
@@ -171,6 +174,26 @@ export class EmedixWebhookService {
         return {
             received: invoices.length,
             message: `Successfully processed ${invoices.length} invoice(s)`,
+        };
+    }
+
+    // ── Order Status Update (ERP → Backend) ──
+    async handleOrderStatus(dto: OrderStatusWebhookDto): Promise<{ message: string; orderNumber: string; status: string }> {
+        this.logger.log(`ERP order status update: ${dto.order_no} → ${dto.status}`);
+
+        const updated = await this.ordersService.applyErpStatusUpdate(
+            dto.order_no,
+            dto.status,
+            dto.erp_order_id,
+            dto.invoice_url,
+            dto.invoice_number,
+            dto.notes,
+        );
+
+        return {
+            message: 'Order status updated successfully',
+            orderNumber: updated.orderNumber,
+            status: updated.status,
         };
     }
 }

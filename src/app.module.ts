@@ -10,7 +10,10 @@ import { Address } from './addresses/entities/address.entity';
 import { UsersModule } from './users/users.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { MapsModule } from './maps/maps.module';
+import { OrdersModule } from './orders/orders.module';
 import databaseConfig from './database/database.config';
+import { FirebaseModule } from './firebase/firebase.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -24,16 +27,19 @@ import databaseConfig from './database/database.config';
       useFactory: (configService: ConfigService) => ({
         ...configService.get('database'),
         entities: [User, Address],
-        synchronize: true, // ⚠️ disable in production, use migrations
+        synchronize: true,
       }),
     }),
+    FirebaseModule,
     EmedixWebhookModule,
     AuthModule,
     UsersModule,
     AddressesModule,
     MapsModule,
+    OrdersModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

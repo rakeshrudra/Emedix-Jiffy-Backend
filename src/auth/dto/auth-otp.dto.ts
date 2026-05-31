@@ -1,21 +1,33 @@
-import { IsString, Matches, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
-export class SendOtpDto {
-  @ApiProperty({ example: '9523668847', description: '10-digit mobile number' })
+export class VerifyFirebaseTokenDto {
+  @ApiProperty({
+    example: 'eyJhbGciOiJSUzI1NiIsImtpZCI6...',
+    description: 'Firebase ID Token obtained from the client after OTP verification',
+  })
   @IsString()
-  @Matches(/^[0-9]{10}$/, { message: 'Mobile number must be 10 digits' })
-  mobile_no: string;
+  @IsNotEmpty({ message: 'Firebase ID token is required' })
+  idToken: string;
 }
 
-export class VerifyOtpDto {
-  @ApiProperty({ example: '9523668847', description: '10-digit mobile number' })
+export class RefreshTokenDto {
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6...',
+    description: 'Refresh token received from the verify-token response',
+  })
   @IsString()
-  @Matches(/^[0-9]{10}$/, { message: 'Mobile number must be 10 digits' })
-  mobile_no: string;
+  @IsNotEmpty({ message: 'Refresh token is required' })
+  refresh_token: string;
+}
 
-  @ApiProperty({ example: '123456', description: '6-digit OTP' })
+export class UpdateProfileDto {
+  @ApiProperty({ example: 'Rahul Sharma', description: 'User display name' })
+  @IsNotEmpty({ message: 'Name is required' })
   @IsString()
-  @Length(6, 6, { message: 'OTP must be 6 digits' })
-  otp: string;
+  @MinLength(2, { message: 'Name is too short' })
+  @MaxLength(100, { message: 'Name is too long' })
+  @Transform(({ value }) => value?.trim())
+  name: string;
 }

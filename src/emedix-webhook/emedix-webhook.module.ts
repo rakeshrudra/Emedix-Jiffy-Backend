@@ -5,9 +5,13 @@ import { EmedixWebhookService } from './emedix-webhook.service';
 import { Product } from './entities/product.entity';
 import { Invoice } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Product, Invoice, InvoiceItem])],
+    imports: [
+        TypeOrmModule.forFeature([Product, Invoice, InvoiceItem]),
+        OrdersModule,
+    ],
     controllers: [EmedixWebhookController],
     providers: [EmedixWebhookService],
     exports: [EmedixWebhookService],
