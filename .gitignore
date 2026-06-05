@@ -55,6 +55,6 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# local files
+# local files & folders
+firebase_creds
 emedix_jiffy.sql
-jiffi-148d7-firebase-adminsdk-fbsvc-329bef06a1.json
