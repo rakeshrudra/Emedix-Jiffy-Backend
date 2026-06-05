@@ -6,6 +6,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     Unique,
+    Index,
 } from 'typeorm';
 
 @Entity('products')
@@ -20,6 +21,7 @@ export class Product {
     storeId: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
+    @Index()
     @Column()
     productName: string;
 
