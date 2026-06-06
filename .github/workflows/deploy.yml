@@ -1,0 +1,30 @@
+name: Deploy to DigitalOcean VPS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          script: |
+            cd /var/www/Emedix-Jiffy-Backend
+            
+            git pull origin master
+            
+            npm install
+            npm run build
+
+            docker-compose up -d
+            
+            pm2 restart jiffyBack
