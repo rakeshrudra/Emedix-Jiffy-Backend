@@ -26,5 +26,7 @@ jobs:
             npm run build
 
             docker-compose up -d
+
+            npm run migration:run
             
             pm2 restart jiffyBack
