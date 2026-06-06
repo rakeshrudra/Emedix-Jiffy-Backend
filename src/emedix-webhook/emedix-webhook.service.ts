@@ -7,6 +7,7 @@ import { InvoiceItem } from './entities/invoice-item.entity';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
 import { InvoiceDto } from './dto/invoice.dto';
+import { Order } from '../orders/entities/order.entity';
 import { OrdersService } from '../orders/orders.service';
 import { OrderStatusWebhookDto } from '../orders/dto/order-status-webhook.dto';
 
@@ -98,7 +99,7 @@ export class EmedixWebhookService {
     }
 
     // ── Invoice Upload ──
-    async handleInvoice(invoices: InvoiceDto[]): Promise<{ received: number; message: string }> {
+    async handleInvoice(invoices: InvoiceDto[]): Promise<{ received: number, message: string }> {
         for (const inv of invoices) {
             // Find or create invoice using composite key
             let invoice = await this.invoiceRepository.findOne({
@@ -168,12 +169,38 @@ export class EmedixWebhookService {
                     }
                 }
             }
+
+            // Link invoice to order — move order to PACKED
+            if (inv.order_no) {
+                try {
+                    await this.ordersService.applyErpStatusUpdate(
+                        inv.order_no,
+                        'PACKED',
+                        undefined,
+                        undefined,
+                        inv.invoice_no,
+                    );
+                    this.logger.log(`Order ${inv.order_no} -> PACKED via invoice ${inv.invoice_no}`);
+                } catch (err: unknown) {
+                    this.logger.warn(
+                        `Invoice ${inv.invoice_no}: could not update order ${inv.order_no}: ${(err as Error).message}`,
+                    );
+                }
+            }
         }
 
         this.logger.log(`Upserted ${invoices.length} invoice(s)`);
         return {
             received: invoices.length,
             message: `Successfully processed ${invoices.length} invoice(s)`,
+        };
+    }
+
+    async handlePendingOrders(storeId?: string) {
+        const orders = await this.ordersService.fetchPendingOrders(storeId);
+        return {
+            count: orders.length,
+            orders: orders.map((o) => this.formatOrderForErp(o)),
         };
     }
 
@@ -194,6 +221,38 @@ export class EmedixWebhookService {
             message: 'Order status updated successfully',
             orderNumber: updated.orderNumber,
             status: updated.status,
+        };
+    }
+
+    private formatOrderForErp(order: Order) {
+        let deliveryAddress: object;
+        try {
+            deliveryAddress = JSON.parse(order.deliveryAddress);
+        } catch {
+            deliveryAddress = { raw: order.deliveryAddress };
+        }
+
+        return {
+            order_no: order.orderNumber,
+            store_id: order.storeId,
+            customer_name: order.customerName,
+            customer_phone: order.customerPhone,
+            delivery_address: deliveryAddress,
+            payment_method: order.paymentMethod,
+            subtotal: order.subtotal,
+            delivery_charge: order.deliveryCharge,
+            discount: order.discount,
+            total_amount: order.totalAmount,
+            created_at: order.createdAt,
+            items: order.items.map((i) => ({
+                product_code: i.productCode,
+                product_name: i.productName,
+                qty: i.quantity,
+                unit_price: i.productPrice,
+                discount_price: i.productDiscountPrice,
+                total: i.total,
+                hsn_code: i.hsnCode ?? null,
+            })),
         };
     }
 }

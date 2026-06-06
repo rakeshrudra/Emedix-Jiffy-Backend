@@ -1,28 +1,34 @@
 import {
     BadRequestException,
+    ForbiddenException,
+    Inject,
     Injectable,
     Logger,
     NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { Order, OrderStatus, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
-import { SwilErpService, SwilOrderPayload } from './swil-erp.service';
+import { Invoice } from '../emedix-webhook/entities/invoice.entity';
 
-// States that can transition to CANCELLED
-const CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
+// Only PENDING is cancellable — PROCESSING means the store already has the order
+const CANCELLABLE_STATES = [OrderStatus.PENDING];
 
-// Valid inbound status transitions from ERP
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
-    [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+    [OrderStatus.PROCESSING]: OrderStatus.CONFIRMED,
     [OrderStatus.CONFIRMED]: OrderStatus.PACKED,
     [OrderStatus.PACKED]: OrderStatus.DISPATCHED,
     [OrderStatus.DISPATCHED]: OrderStatus.DELIVERED,
 };
+
+const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
+const IDEMPOTENCY_PREFIX = 'order:idem:';
 
 @Injectable()
 export class OrdersService {
@@ -35,81 +41,120 @@ export class OrdersService {
         private readonly orderItemRepository: Repository<OrderItem>,
         @InjectRepository(OrderStatusLog)
         private readonly statusLogRepository: Repository<OrderStatusLog>,
-        private readonly swilErpService: SwilErpService,
+        @InjectRepository(Invoice)
+        private readonly invoiceRepository: Repository<Invoice>,
+        private readonly dataSource: DataSource,
+        @Inject(REDIS_CLIENT)
+        private readonly redis: Redis,
     ) {}
 
     async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
-        // 1. Idempotency: return existing order if same key already processed
+        // 1. Redis idempotency — fast path
+        const redisKey = `${IDEMPOTENCY_PREFIX}${dto.idempotency_key}`;
+        const cachedOrderId = await this.redis.get(redisKey);
+        if (cachedOrderId) {
+            this.logger.warn(`Idempotency hit (Redis) for key: ${dto.idempotency_key}`);
+            return this.orderRepository.findOne({ where: { id: cachedOrderId }, relations: ['items'] });
+        }
+
+        // 2. DB unique index — durable backstop for race conditions
         const existing = await this.orderRepository.findOne({
             where: { idempotencyKey: dto.idempotency_key },
         });
         if (existing) {
-            this.logger.warn(`Duplicate order creation attempt for key: ${dto.idempotency_key}`);
+            this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
+            this.redis.set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL).catch(() => {});
             return existing;
         }
 
-        // 2. Generate order number (EJ-YYYYMMDD-XXXX)
         const orderNumber = await this.generateOrderNumber();
 
-        // 3. Build order items — snapshot of product details at time of order
-        const items = dto.items.map((i) =>
-            this.orderItemRepository.create({
-                productCode: i.product_code,
-                productName: i.product_name,
-                productCompany: i.product_company ?? null,
-                productType: i.product_type ?? null,
-                packagingOfMedicines: i.packaging_of_medicines ?? null,
-                productComposition: i.product_composition ?? null,
-                quantity: i.qty,
-                productPrice: i.unit_price,
-                productDiscountPrice: i.discount_price,
-                total: Number((i.discount_price * i.qty).toFixed(2)),
-                hsnCode: i.hsn_code ?? null,
-            }),
-        );
+        // 3. Save order + items + initial status log in one transaction
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-        // 4. Persist order with PENDING status
-        const order = this.orderRepository.create({
-            orderNumber,
-            userId,
-            storeId: dto.store_id,
-            status: OrderStatus.PENDING,
-            paymentStatus: PaymentStatus.PAID,
-            idempotencyKey: dto.idempotency_key,
-            subtotal: dto.subtotal,
-            deliveryCharge: dto.delivery_charge,
-            discount: dto.discount ?? 0,
-            totalAmount: dto.total_amount,
-            paymentMethod: dto.payment_method,
-            paymentGatewayRef: dto.payment_gateway_ref,
-            customerName: dto.customer_name,
-            customerPhone: dto.customer_phone,
-            deliveryAddress: JSON.stringify(dto.delivery_address),
-            prescriptionUrls: dto.prescription_urls
-                ? JSON.stringify(dto.prescription_urls)
-                : null,
-            items,
-        });
+        let savedOrder: Order;
 
-        const savedOrder = await this.orderRepository.save(order);
+        try {
+            const items = dto.items.map((i) =>
+                this.orderItemRepository.create({
+                    productCode: i.product_code,
+                    productName: i.product_name,
+                    productCompany: i.product_company ?? null,
+                    productType: i.product_type ?? null,
+                    packagingOfMedicines: i.packaging_of_medicines ?? null,
+                    productComposition: i.product_composition ?? null,
+                    quantity: i.qty,
+                    productPrice: i.unit_price,
+                    productDiscountPrice: i.discount_price,
+                    total: (parseFloat(i.discount_price) * i.qty).toFixed(2),
+                    hsnCode: i.hsn_code ?? null,
+                }),
+            );
 
-        // 5. Log initial PENDING transition
-        await this.logTransition(savedOrder.id, null, OrderStatus.PENDING, OrderActor.SYSTEM, 'Order created after payment success');
+            const order = this.orderRepository.create({
+                orderNumber,
+                userId,
+                storeId: dto.store_id,
+                status: OrderStatus.PENDING,
+                paymentStatus: PaymentStatus.PAID,
+                idempotencyKey: dto.idempotency_key,
+                subtotal: dto.subtotal,
+                deliveryCharge: dto.delivery_charge,
+                discount: dto.discount ?? 0,
+                totalAmount: dto.total_amount,
+                paymentMethod: dto.payment_method,
+                paymentGatewayRef: dto.payment_gateway_ref,
+                customerName: dto.customer_name,
+                customerPhone: dto.customer_phone,
+                deliveryAddress: JSON.stringify(dto.delivery_address),
+                prescriptionUrls: dto.prescription_urls ? JSON.stringify(dto.prescription_urls) : null,
+                items,
+            });
 
-        // 6. Push to Swil ERP asynchronously (non-blocking — retries internally)
-        this.pushToErpWithRetry(savedOrder, dto).catch(() => {
-            // Errors are logged inside the method; never surface to the user
+            savedOrder = await queryRunner.manager.save(Order, order);
+
+            await queryRunner.manager.save(
+                OrderStatusLog,
+                this.statusLogRepository.create({
+                    order: { id: savedOrder.id } as Order,
+                    fromStatus: null,
+                    toStatus: OrderStatus.PENDING,
+                    actor: OrderActor.SYSTEM,
+                    notes: 'Order created after payment success',
+                }),
+            );
+
+            await queryRunner.commitTransaction();
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw err;
+        } finally {
+            await queryRunner.release();
+        }
+
+        // 4. Cache idempotency key — best-effort, never block the response
+        this.redis.set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL).catch((err) => {
+            this.logger.warn(`Redis idempotency cache failed for ${dto.idempotency_key}: ${err.message}`);
         });
 
         return savedOrder;
     }
 
-    async getOrdersByUser(userId: string): Promise<Order[]> {
-        return this.orderRepository.find({
+    async getOrdersByUser(
+        userId: string,
+        page: number,
+        limit: number,
+    ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
+        const [data, total] = await this.orderRepository.findAndCount({
             where: { userId },
             order: { createdAt: 'DESC' },
             relations: ['items'],
+            skip: (page - 1) * limit,
+            take: limit,
         });
+        return { data, total, page, pages: Math.ceil(total / limit) };
     }
 
     async getOrderById(orderId: string, userId: string): Promise<Order> {
@@ -117,22 +162,34 @@ export class OrdersService {
             where: { id: orderId, userId },
             relations: ['items', 'statusLogs'],
         });
-        if (!order) {
-            throw new NotFoundException('Order not found');
-        }
+        if (!order) throw new NotFoundException('Order not found');
         return order;
     }
 
-    async cancelOrder(orderId: string, userId: string, dto: CancelOrderDto): Promise<Order> {
-        const order = await this.orderRepository.findOne({
-            where: { id: orderId, userId },
+    async getOrderInvoice(orderId: string, userId: string): Promise<Invoice> {
+        const order = await this.orderRepository.findOne({ where: { id: orderId } });
+        if (!order) throw new NotFoundException('Order not found');
+        if (order.userId !== userId) throw new ForbiddenException('Access denied');
+
+        const invoice = await this.invoiceRepository.findOne({
+            where: { orderNo: order.orderNumber },
+            relations: ['items'],
         });
-        if (!order) {
-            throw new NotFoundException('Order not found');
-        }
+        if (!invoice) throw new NotFoundException('Invoice not ready yet');
+
+        return invoice;
+    }
+
+    async cancelOrder(orderId: string, userId: string, dto: CancelOrderDto): Promise<Order> {
+        const order = await this.orderRepository.findOne({ where: { id: orderId, userId } });
+        if (!order) throw new NotFoundException('Order not found');
+
+        // Idempotent — already cancelled
+        if (order.status === OrderStatus.CANCELLED) return order;
+
         if (!CANCELLABLE_STATES.includes(order.status)) {
             throw new BadRequestException(
-                `Order cannot be cancelled in ${order.status} state. Contact store if already packed.`,
+                `Cannot cancel — store is already processing this order (status: ${order.status}).`,
             );
         }
 
@@ -143,17 +200,64 @@ export class OrdersService {
         order.paymentStatus = PaymentStatus.REFUNDED;
 
         const updated = await this.orderRepository.save(order);
-        await this.logTransition(
-            order.id,
-            previousStatus,
-            OrderStatus.CANCELLED,
-            OrderActor.USER,
-            dto.reason ?? 'Cancelled by user',
-        );
+        await this.logTransition(order.id, previousStatus, OrderStatus.CANCELLED, OrderActor.USER, dto.reason ?? 'Cancelled by user');
 
         this.logger.log(`Order ${order.orderNumber} cancelled by user ${userId}`);
-        // TODO: Trigger refund via payment gateway and notify ERP
+        // TODO: trigger refund via payment gateway (Phase 2)
         return updated;
+    }
+
+    // Called by GET /api/erp/orders/pending — atomically marks PENDING → PROCESSING
+    async fetchPendingOrders(storeId?: string): Promise<Order[]> {
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const where: Partial<Order> = { status: OrderStatus.PENDING };
+            if (storeId) where.storeId = storeId;
+
+            const orders = await queryRunner.manager.find(Order, {
+                where,
+                relations: ['items'],
+                order: { createdAt: 'ASC' },
+                lock: { mode: 'pessimistic_write' },
+            });
+
+            if (orders.length > 0) {
+                const now = new Date();
+                const ids = orders.map((o) => o.id);
+
+                await queryRunner.manager
+                    .createQueryBuilder()
+                    .update(Order)
+                    .set({ status: OrderStatus.PROCESSING, erpFetchedAt: now, processingAt: now })
+                    .whereInIds(ids)
+                    .execute();
+
+                for (const order of orders) {
+                    await queryRunner.manager.save(
+                        OrderStatusLog,
+                        this.statusLogRepository.create({
+                            order: { id: order.id } as Order,
+                            fromStatus: OrderStatus.PENDING,
+                            toStatus: OrderStatus.PROCESSING,
+                            actor: OrderActor.ERP,
+                            notes: 'Fetched by Swil ERP poll',
+                        }),
+                    );
+                    order.status = OrderStatus.PROCESSING;
+                }
+            }
+
+            await queryRunner.commitTransaction();
+            return orders;
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw err;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     async applyErpStatusUpdate(
@@ -165,18 +269,21 @@ export class OrdersService {
         notes?: string,
     ): Promise<Order> {
         const order = await this.orderRepository.findOne({ where: { orderNumber } });
-        if (!order) {
-            throw new NotFoundException(`Order not found: ${orderNumber}`);
-        }
+        if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
 
         const targetStatus = newStatus.toUpperCase() as OrderStatus;
 
-        // Allow CANCELLED and FAILED from any state; otherwise validate transition
+        // User cancelled while ERP was processing — ignore ERP update, keep cancelled
+        if (order.status === OrderStatus.CANCELLED) {
+            this.logger.warn(`Order ${orderNumber} already CANCELLED. Ignoring ERP update: ${targetStatus}`);
+            return order;
+        }
+
         if (targetStatus !== OrderStatus.CANCELLED && targetStatus !== OrderStatus.FAILED) {
             const expectedNext = VALID_ERP_TRANSITIONS[order.status];
             if (expectedNext !== targetStatus) {
                 throw new BadRequestException(
-                    `Invalid transition: ${order.status} → ${targetStatus}. Expected next: ${expectedNext ?? 'none'}`,
+                    `Invalid transition: ${order.status} → ${targetStatus}. Expected: ${expectedNext ?? 'none'}`,
                 );
             }
         }
@@ -184,15 +291,10 @@ export class OrdersService {
         const previousStatus = order.status;
         order.status = targetStatus;
 
-        if (erpOrderId && !order.erpOrderId) {
-            order.erpOrderId = erpOrderId;
-        }
-        if (invoiceUrl) {
-            order.invoiceUrl = invoiceUrl;
-        }
-        if (invoiceNumber) {
-            order.invoiceNumber = invoiceNumber;
-        }
+        if (erpOrderId && !order.erpOrderId) order.erpOrderId = erpOrderId;
+        if (invoiceUrl) order.invoiceUrl = invoiceUrl;
+        if (invoiceNumber) order.invoiceNumber = invoiceNumber;
+
         if (targetStatus === OrderStatus.CANCELLED) {
             order.cancelledAt = new Date();
             order.cancellationReason = notes ?? 'Cancelled by ERP';
@@ -202,8 +304,8 @@ export class OrdersService {
         const updated = await this.orderRepository.save(order);
         await this.logTransition(order.id, previousStatus, targetStatus, OrderActor.ERP, notes);
 
-        this.logger.log(`Order ${orderNumber}: ${previousStatus} → ${targetStatus} (via ERP webhook)`);
-        // TODO: Send FCM push notification to user for each status change
+        this.logger.log(`Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`);
+        // TODO: FCM push notification to user (Phase 2)
         return updated;
     }
 
@@ -211,7 +313,7 @@ export class OrdersService {
 
     private async generateOrderNumber(): Promise<string> {
         const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
         const prefix = `EJ-${dateStr}-`;
 
         const lastOrder = await this.orderRepository
@@ -228,79 +330,6 @@ export class OrdersService {
         }
 
         return `${prefix}${seq.toString().padStart(4, '0')}`;
-    }
-
-    private async pushToErpWithRetry(order: Order, dto: CreateOrderDto): Promise<void> {
-        const delays = [2000, 4000, 8000]; // exponential backoff: 2s, 4s, 8s
-        const payload = this.buildErpPayload(order, dto);
-
-        for (let attempt = 0; attempt <= delays.length; attempt++) {
-            try {
-                if (attempt > 0) {
-                    await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
-                }
-
-                const result = await this.swilErpService.pushOrder(payload);
-
-                await this.orderRepository.update(order.id, {
-                    erpOrderId: result.erp_order_id,
-                    status: OrderStatus.CONFIRMED,
-                    erpPushAttempts: attempt + 1,
-                    erpPushedAt: new Date(),
-                });
-
-                await this.logTransition(
-                    order.id,
-                    OrderStatus.PENDING,
-                    OrderStatus.CONFIRMED,
-                    OrderActor.ERP,
-                    `ERP acknowledged. erp_order_id: ${result.erp_order_id}`,
-                );
-
-                this.logger.log(
-                    `Order ${order.orderNumber} pushed to ERP on attempt ${attempt + 1}. ERP ID: ${result.erp_order_id}`,
-                );
-                return;
-            } catch (error) {
-                this.logger.warn(
-                    `ERP push attempt ${attempt + 1}/${delays.length + 1} failed for ${order.orderNumber}: ${error.message}`,
-                );
-            }
-        }
-
-        // All retries exhausted — keep PENDING, alert via logs
-        await this.orderRepository.update(order.id, { erpPushAttempts: delays.length + 1 });
-        this.logger.error(
-            `ALERT: All ERP push attempts failed for order ${order.orderNumber}. Manual reconciliation required.`,
-        );
-    }
-
-    private buildErpPayload(order: Order, dto: CreateOrderDto): SwilOrderPayload {
-        const addr = dto.delivery_address;
-        const deliveryAddressStr = `${addr.formatted_address}, ${addr.city}, ${addr.state} - ${addr.pincode}`;
-
-        return {
-            order_no: order.orderNumber,
-            store_id: order.storeId,
-            customer_name: order.customerName,
-            customer_phone: order.customerPhone,
-            delivery_address: deliveryAddressStr,
-            payment_method: order.paymentMethod,
-            payment_gateway_ref: order.paymentGatewayRef,
-            subtotal: order.subtotal.toString(),
-            delivery_charge: order.deliveryCharge.toString(),
-            discount: order.discount.toString(),
-            total_amount: order.totalAmount.toString(),
-            items: dto.items.map((i) => ({
-                product_code: i.product_code,
-                product_name: i.product_name,
-                qty: i.qty,
-                unit_price: i.unit_price.toString(),
-                discount_price: i.discount_price.toString(),
-                total: (i.discount_price * i.qty).toFixed(2),
-                hsn_code: i.hsn_code ?? undefined,
-            })),
-        };
     }
 
     private async logTransition(

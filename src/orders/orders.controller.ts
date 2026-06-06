@@ -5,6 +5,7 @@ import {
     Param,
     Patch,
     Post,
+    Query,
     Request,
     UseGuards,
 } from '@nestjs/common';
@@ -12,6 +13,7 @@ import {
     ApiBearerAuth,
     ApiOperation,
     ApiParam,
+    ApiQuery,
     ApiResponse,
     ApiTags,
 } from '@nestjs/swagger';
@@ -48,17 +50,26 @@ export class OrdersController {
 
     /**
      * GET /api/orders
-     * Returns full order history for the authenticated user.
+     * Returns paginated order history for the authenticated user.
      */
     @Get()
-    @ApiOperation({ summary: 'Get order history for authenticated user' })
+    @ApiOperation({ summary: 'Get order history for authenticated user (paginated)' })
+    @ApiQuery({ name: 'page', required: false, example: 1 })
+    @ApiQuery({ name: 'limit', required: false, example: 10 })
     @ApiResponse({ status: 200, description: 'Order list returned' })
-    async getMyOrders(@Request() req) {
-        const orders = await this.ordersService.getOrdersByUser(req.user.sub);
+    async getMyOrders(
+        @Request() req,
+        @Query('page') page = '1',
+        @Query('limit') limit = '10',
+    ) {
+        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+        const parsedLimit = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+        const result = await this.ordersService.getOrdersByUser(req.user.sub, parsedPage, parsedLimit);
         return {
             success: true,
             message: 'Orders fetched successfully',
-            data: orders,
+            data: result.data,
+            meta: { total: result.total, page: result.page, limit: parsedLimit, pages: result.pages },
         };
     }
 
@@ -77,6 +88,25 @@ export class OrdersController {
             success: true,
             message: 'Order fetched successfully',
             data: order,
+        };
+    }
+
+    /**
+     * GET /api/orders/:id/invoice
+     * Returns the invoice for a specific order.
+     */
+    @Get(':id/invoice')
+    @ApiOperation({ summary: 'Get invoice for a specific order' })
+    @ApiParam({ name: 'id', description: 'Order UUID' })
+    @ApiResponse({ status: 200, description: 'Invoice returned' })
+    @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user' })
+    @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated' })
+    async getOrderInvoice(@Request() req, @Param('id') id: string) {
+        const invoice = await this.ordersService.getOrderInvoice(id, req.user.sub);
+        return {
+            success: true,
+            message: 'Invoice fetched successfully',
+            data: invoice,
         };
     }
 

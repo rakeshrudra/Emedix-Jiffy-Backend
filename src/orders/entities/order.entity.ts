@@ -13,6 +13,7 @@ import { OrderStatusLog } from './order-status-log.entity';
 
 export enum OrderStatus {
     PENDING = 'PENDING',
+    PROCESSING = 'PROCESSING',
     CONFIRMED = 'CONFIRMED',
     PACKED = 'PACKED',
     DISPATCHED = 'DISPATCHED',
@@ -103,11 +104,11 @@ export class Order {
     @Column({ type: 'text', nullable: true })
     prescriptionUrls: string;
 
-    @Column({ default: 0 })
-    erpPushAttempts: number;
+    @Column({ type: 'datetime', nullable: true })
+    erpFetchedAt: Date;
 
     @Column({ type: 'datetime', nullable: true })
-    erpPushedAt: Date;
+    processingAt: Date;
 
     @ApiProperty({ nullable: true })
     @Column({ nullable: true })

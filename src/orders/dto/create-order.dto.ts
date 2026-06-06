@@ -49,15 +49,15 @@ export class OrderItemDto {
     @Min(1)
     qty: number;
 
-    @ApiProperty({ example: 25.0 })
+    @ApiProperty({ example: '25.00' })
     @IsNotEmpty()
-    @IsNumber()
-    unit_price: number;
+    @IsString()
+    unit_price: string;
 
-    @ApiProperty({ example: 22.0 })
+    @ApiProperty({ example: '22.00' })
     @IsNotEmpty()
-    @IsNumber()
-    discount_price: number;
+    @IsString()
+    discount_price: string;
 
     @ApiProperty({ example: '3004', required: false })
     @IsOptional()

@@ -1,5 +1,5 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiHeader } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiQuery, ApiTags, ApiOperation, ApiResponse, ApiBody, ApiHeader } from '@nestjs/swagger';
 import { EmedixWebhookService } from './emedix-webhook.service';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
@@ -42,6 +42,24 @@ export class EmedixWebhookController {
     @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
     handleInvoice(@Body() data: InvoiceUploadDto) {
         return this.webhookService.handleInvoice(data.result);
+    }
+
+    /**
+     * GET /api/erp/orders/pending?store_id=001
+     * Swil ERP polls this every 5–10 min.
+     * Atomically returns PENDING orders and marks them PROCESSING.
+     * Concurrent polls are safe — pessimistic lock ensures no double-fetch.
+     */
+    @Get('orders/pending')
+    @ApiOperation({
+        summary: 'Fetch pending orders (Swil ERP poll endpoint)',
+        description: 'Returns all PENDING orders for the store and marks them PROCESSING in one atomic transaction.',
+    })
+    @ApiQuery({ name: 'store_id', required: false, description: 'Filter by store ERP code' })
+    @ApiResponse({ status: 200, description: 'Pending orders returned and marked as PROCESSING' })
+    @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
+    async getPendingOrders(@Query('store_id') storeId?: string) {
+        return this.webhookService.handlePendingOrders(storeId);
     }
 
     /**

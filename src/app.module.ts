@@ -14,6 +14,7 @@ import { OrdersModule } from './orders/orders.module';
 import databaseConfig from './database/database.config';
 import { FirebaseModule } from './firebase/firebase.module';
 import { ProductsModule } from './products/products.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ProductsModule } from './products/products.module';
     MapsModule,
     OrdersModule,
     ProductsModule,
+    RedisModule
   ],
   controllers: [AppController],
   providers: [AppService],

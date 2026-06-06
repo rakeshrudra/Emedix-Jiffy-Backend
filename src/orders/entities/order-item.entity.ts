@@ -46,16 +46,16 @@ export class OrderItem {
     quantity: number;
 
     @ApiProperty({ example: '25.00' })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productPrice: number;
+    @Column()
+    productPrice: string;
 
     @ApiProperty({ example: '22.00' })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productDiscountPrice: number;
+    @Column()
+    productDiscountPrice: string;
 
     @ApiProperty({ example: '44.00' })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    total: number;
+    @Column()
+    total: string;
 
     @ApiProperty({ example: '3004', nullable: true })
     @Column({ nullable: true })
