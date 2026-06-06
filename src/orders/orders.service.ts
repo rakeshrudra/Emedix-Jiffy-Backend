@@ -17,7 +17,8 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
 
-const CANCELLABLE_STATES = [OrderStatus.PENDING];
+const USER_CANCELLABLE_STATES = [OrderStatus.PENDING];
+const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -186,9 +187,9 @@ export class OrdersService {
         // Idempotent — already cancelled
         if (order.status === OrderStatus.CANCELLED) return order;
 
-        if (!CANCELLABLE_STATES.includes(order.status)) {
+        if (!USER_CANCELLABLE_STATES.includes(order.status)) {
             throw new BadRequestException(
-                `Cannot cancel — store is already processing this order (status: ${order.status}).`,
+                `Cannot cancel — order is already ${order.status.toLowerCase()} and can no longer be cancelled.`,
             );
         }
 
@@ -247,7 +248,13 @@ export class OrdersService {
             return order;
         }
 
-        if (targetStatus !== OrderStatus.CANCELLED && targetStatus !== OrderStatus.FAILED) {
+        if (targetStatus === OrderStatus.CANCELLED) {
+            if (!ERP_CANCELLABLE_STATES.includes(order.status)) {
+                throw new BadRequestException(
+                    `ERP cannot cancel order in status: ${order.status}.`,
+                );
+            }
+        } else if (targetStatus !== OrderStatus.FAILED) {
             const expectedNext = VALID_ERP_TRANSITIONS[order.status];
             if (expectedNext !== targetStatus) {
                 throw new BadRequestException(
