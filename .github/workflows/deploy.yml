@@ -18,9 +18,12 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           script: |
+            set -e
+
             cd /var/www/Emedix-Jiffy-Backend
             
-            git pull origin master
+            git fetch origin
+            git reset --hard origin/master
             
             npm install
             npm run build
