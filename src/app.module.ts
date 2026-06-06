@@ -27,7 +27,7 @@ import databaseConfig from './database/database.config';
       useFactory: (configService: ConfigService) => ({
         ...configService.get('database'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: process.env.NODE_ENV !== 'production',
       }),
     }),
     FirebaseModule,
