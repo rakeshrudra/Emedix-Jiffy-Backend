@@ -112,10 +112,10 @@ export class OrdersController {
 
     /**
      * PATCH /api/orders/:id/cancel
-     * Cancels an order only in PENDING or CONFIRMED state.
+     * Cancels an order only in PENDING state.
      */
     @Patch(':id/cancel')
-    @ApiOperation({ summary: 'Cancel an order (only in PENDING or CONFIRMED state)' })
+    @ApiOperation({ summary: 'Cancel an order (only in PENDING state)' })
     @ApiParam({ name: 'id', description: 'Order UUID' })
     @ApiResponse({ status: 200, description: 'Order cancelled' })
     @ApiResponse({ status: 400, description: 'Cannot cancel in current state' })
