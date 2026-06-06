@@ -28,7 +28,7 @@ jobs:
             npm install
             npm run build
 
-            docker compose up -d
+            docker start emedix_jiffy_redis || docker run -d --name emedix_jiffy_redis -p 127.0.0.1:6379:6379 -v redis_data:/data --restart unless-stopped redis:7-alpine redis-server --appendonly yes
 
             npm run migration:run
             
