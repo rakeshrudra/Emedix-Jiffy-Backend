@@ -15,17 +15,16 @@ import { OrderItem } from './entities/order-item.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
-import { Invoice } from '../emedix-webhook/entities/invoice.entity';
+import { Invoice } from '../invoices/entities/invoice.entity';
 
-// Only PENDING is cancellable — PROCESSING means the store already has the order
 const CANCELLABLE_STATES = [OrderStatus.PENDING];
 
+// Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
-    [OrderStatus.PROCESSING]: OrderStatus.CONFIRMED,
-    [OrderStatus.CONFIRMED]: OrderStatus.PACKED,
-    [OrderStatus.PACKED]: OrderStatus.DISPATCHED,
-    [OrderStatus.DISPATCHED]: OrderStatus.DELIVERED,
+    [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
 };
+
+// Admin panel (Phase 2): CONFIRMED → DISPATCHED → DELIVERED
 
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 const IDEMPOTENCY_PREFIX = 'order:idem:';
@@ -46,7 +45,7 @@ export class OrdersService {
         private readonly dataSource: DataSource,
         @Inject(REDIS_CLIENT)
         private readonly redis: Redis,
-    ) {}
+    ) { }
 
     async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
         // 1. Redis idempotency — fast path
@@ -63,7 +62,7 @@ export class OrdersService {
         });
         if (existing) {
             this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
-            this.redis.set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL).catch(() => {});
+            this.redis.set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL).catch(() => { });
             return existing;
         }
 
@@ -81,15 +80,15 @@ export class OrdersService {
                 this.orderItemRepository.create({
                     productCode: i.product_code,
                     productName: i.product_name,
-                    productCompany: i.product_company ?? null,
-                    productType: i.product_type ?? null,
-                    packagingOfMedicines: i.packaging_of_medicines ?? null,
-                    productComposition: i.product_composition ?? null,
-                    quantity: i.qty,
+                    productCompany: i.product_company ?? '',
+                    productType: i.product_type ?? '',
+                    packagingOfMedicines: i.packaging_of_medicines ?? '',
+                    productComposition: i.product_composition ?? '',
+                    qty: i.qty,
                     productPrice: i.unit_price,
                     productDiscountPrice: i.discount_price,
                     total: (parseFloat(i.discount_price) * i.qty).toFixed(2),
-                    hsnCode: i.hsn_code ?? null,
+                    hsnCode: i.hsn_code ?? '',
                 }),
             );
 
@@ -109,7 +108,7 @@ export class OrdersService {
                 customerName: dto.customer_name,
                 customerPhone: dto.customer_phone,
                 deliveryAddress: JSON.stringify(dto.delivery_address),
-                prescriptionUrls: dto.prescription_urls ? JSON.stringify(dto.prescription_urls) : null,
+                prescriptionUrls: dto.prescription_urls ? JSON.stringify(dto.prescription_urls) : '',
                 items,
             });
 
@@ -207,57 +206,26 @@ export class OrdersService {
         return updated;
     }
 
-    // Called by GET /api/erp/orders/pending — atomically marks PENDING → PROCESSING
-    async fetchPendingOrders(storeId?: string): Promise<Order[]> {
-        const queryRunner = this.dataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
+    // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
+    async fetchPendingOrders(storeId: string): Promise<Order[]> {
+        const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
 
-        try {
-            const where: Partial<Order> = { status: OrderStatus.PENDING };
-            if (storeId) where.storeId = storeId;
+        const orders = await this.orderRepository.find({
+            where,
+            relations: ['items'],
+            order: { createdAt: 'ASC' },
+        });
 
-            const orders = await queryRunner.manager.find(Order, {
-                where,
-                relations: ['items'],
-                order: { createdAt: 'ASC' },
-                lock: { mode: 'pessimistic_write' },
-            });
-
-            if (orders.length > 0) {
-                const now = new Date();
-                const ids = orders.map((o) => o.id);
-
-                await queryRunner.manager
-                    .createQueryBuilder()
-                    .update(Order)
-                    .set({ status: OrderStatus.PROCESSING, erpFetchedAt: now, processingAt: now })
-                    .whereInIds(ids)
-                    .execute();
-
-                for (const order of orders) {
-                    await queryRunner.manager.save(
-                        OrderStatusLog,
-                        this.statusLogRepository.create({
-                            order: { id: order.id } as Order,
-                            fromStatus: OrderStatus.PENDING,
-                            toStatus: OrderStatus.PROCESSING,
-                            actor: OrderActor.ERP,
-                            notes: 'Fetched by Swil ERP poll',
-                        }),
-                    );
-                    order.status = OrderStatus.PROCESSING;
-                }
-            }
-
-            await queryRunner.commitTransaction();
-            return orders;
-        } catch (err) {
-            await queryRunner.rollbackTransaction();
-            throw err;
-        } finally {
-            await queryRunner.release();
+        if (orders.length > 0) {
+            await this.orderRepository
+                .createQueryBuilder()
+                .update(Order)
+                .set({ erpFetchedAt: new Date() })
+                .whereInIds(orders.map((o) => o.id))
+                .execute();
         }
+
+        return orders;
     }
 
     async applyErpStatusUpdate(
@@ -344,7 +312,7 @@ export class OrdersService {
             fromStatus: fromStatus ?? null,
             toStatus,
             actor,
-            notes: notes ?? null,
+            notes: notes ?? '',
         });
         await this.statusLogRepository.save(log);
     }

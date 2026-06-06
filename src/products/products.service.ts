@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Product } from '../emedix-webhook/entities/product.entity';
+import { Product } from './entities/product.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
 
 export interface ProductListResult {
@@ -16,7 +16,7 @@ export class ProductsService {
     constructor(
         @InjectRepository(Product)
         private readonly productRepository: Repository<Product>,
-    ) {}
+    ) { }
 
     async listProducts(dto: SearchProductsDto): Promise<ProductListResult> {
         const page = dto.page ?? 1;

@@ -35,7 +35,7 @@ export class Product {
 
     @ApiProperty({ example: '3004' })
     @Column()
-    hsnSac: string;
+    hsnCode: string;
 
     @ApiProperty({ example: 'no' })
     @Column()

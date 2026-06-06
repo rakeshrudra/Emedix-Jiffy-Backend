@@ -25,25 +25,25 @@ export class OrderItem {
     @Column()
     productName: string;
 
-    @ApiProperty({ example: 'Cipla Ltd', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Cipla Ltd' })
+    @Column({ default: '' })
     productCompany: string;
 
-    @ApiProperty({ example: 'Tablet', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'Tablet' })
+    @Column({ default: '' })
     productType: string;
 
-    @ApiProperty({ example: '10 Tablets per Strip', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '10 Tablets per Strip' })
+    @Column({ default: '' })
     packagingOfMedicines: string;
 
-    @ApiProperty({ example: 'Paracetamol 500mg', nullable: true })
-    @Column({ type: 'text', nullable: true })
+    @ApiProperty({ example: 'Paracetamol 500mg' })
+    @Column({ type: 'text', default: '' })
     productComposition: string;
 
     @ApiProperty({ example: 2 })
     @Column()
-    quantity: number;
+    qty: number;
 
     @ApiProperty({ example: '25.00' })
     @Column()
@@ -57,8 +57,8 @@ export class OrderItem {
     @Column()
     total: string;
 
-    @ApiProperty({ example: '3004', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: '3004' })
+    @Column({ default: '' })
     hsnCode: string;
 
     @ApiProperty()

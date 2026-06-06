@@ -13,9 +13,7 @@ import { OrderStatusLog } from './order-status-log.entity';
 
 export enum OrderStatus {
     PENDING = 'PENDING',
-    PROCESSING = 'PROCESSING',
     CONFIRMED = 'CONFIRMED',
-    PACKED = 'PACKED',
     DISPATCHED = 'DISPATCHED',
     DELIVERED = 'DELIVERED',
     CANCELLED = 'CANCELLED',
@@ -53,8 +51,8 @@ export class Order {
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
     status: OrderStatus;
 
-    @ApiProperty({ example: 'SW-12345', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'SW-12345' })
+    @Column({ default: '' })
     erpOrderId: string;
 
     // Client-generated UUID to prevent duplicate order creation on retry
@@ -86,8 +84,8 @@ export class Order {
     @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
     paymentStatus: PaymentStatus;
 
-    @ApiProperty({ example: 'PAY123456', nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'PAY123456' })
+    @Column({ default: '' })
     paymentGatewayRef: string;
 
     @Column({ type: 'text' })
@@ -101,27 +99,26 @@ export class Order {
     @Column()
     customerPhone: string;
 
-    @Column({ type: 'text', nullable: true })
+    @Column({ type: 'text', default: '' })
     prescriptionUrls: string;
 
+    // Set when Swil ERP first fetches this order
     @Column({ type: 'datetime', nullable: true })
     erpFetchedAt: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    processingAt: Date;
-
-    @ApiProperty({ nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'https://cdn.example.com/invoice.pdf' })
+    @Column({ default: '' })
     invoiceUrl: string;
 
-    @ApiProperty({ nullable: true })
-    @Column({ nullable: true })
+    @ApiProperty({ example: 'INV10045' })
+    @Column({ default: '' })
     invoiceNumber: string;
 
+    // Set only when order is cancelled
     @Column({ type: 'datetime', nullable: true })
     cancelledAt: Date;
 
-    @Column({ type: 'text', nullable: true })
+    @Column({ type: 'text', default: '' })
     cancellationReason: string;
 
     @OneToMany(() => OrderItem, (item) => item.order, { cascade: true, eager: true })

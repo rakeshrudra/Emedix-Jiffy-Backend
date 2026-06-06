@@ -7,16 +7,15 @@ import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatusLog } from './entities/order-status-log.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { Invoice } from '../emedix-webhook/entities/invoice.entity';
-import { InvoiceItem } from '../emedix-webhook/entities/invoice-item.entity';
+import { Invoice } from '../invoices/entities/invoice.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, Invoice, InvoiceItem]),
+        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, Invoice]),
         JwtModule.register({}),
     ],
     controllers: [OrdersController],
     providers: [OrdersService, JwtAuthGuard],
     exports: [OrdersService],
 })
-export class OrdersModule {}
+export class OrdersModule { }

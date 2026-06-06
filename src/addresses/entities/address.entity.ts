@@ -28,14 +28,14 @@ export class Address {
   @Column({
     type: 'enum',
     enum: ['Home', 'Work', 'Other'],
-    nullable: true,
+    default: 'Other',
   })
   label: AddressLabel;
 
-  @Column({ name: 'address_line_1', nullable: true })
+  @Column({ name: 'address_line_1', default: '' })
   addressLine1: string;
 
-  @Column({ name: 'address_line_2', nullable: true })
+  @Column({ name: 'address_line_2', default: '' })
   addressLine2: string;
 
   @Column({ name: 'formatted_address', type: 'text' })

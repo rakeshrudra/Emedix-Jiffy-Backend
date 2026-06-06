@@ -11,10 +11,11 @@ import { UsersModule } from './users/users.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { MapsModule } from './maps/maps.module';
 import { OrdersModule } from './orders/orders.module';
-import databaseConfig from './database/database.config';
 import { FirebaseModule } from './firebase/firebase.module';
 import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
+import { InvoicesModule } from './invoices/invoices.module';
+import databaseConfig from './database/database.config';
 
 @Module({
   imports: [
@@ -39,7 +40,8 @@ import { RedisModule } from './redis/redis.module';
     MapsModule,
     OrdersModule,
     ProductsModule,
-    RedisModule
+    RedisModule,
+    InvoicesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

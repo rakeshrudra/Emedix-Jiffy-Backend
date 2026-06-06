@@ -15,10 +15,10 @@ export class User {
   @Column({ unique: true })
   mobile_no: string;
 
-  @Column({ nullable: true })
+  @Column({ default: '' })
   name: string;
 
-  // Firebase UID — stored to handle account-merge edge cases
+  // Nullable because unique constraint prevents default ''; set after Firebase auth
   @Index()
   @Column({ nullable: true, unique: true })
   firebase_uid: string;

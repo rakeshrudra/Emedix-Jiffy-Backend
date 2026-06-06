@@ -26,7 +26,8 @@ export class OrderStatusLog {
     @ManyToOne(() => Order, (order) => order.statusLogs, { onDelete: 'CASCADE' })
     order: Order;
 
-    @ApiProperty({ example: 'PENDING', nullable: true })
+    // null means this is the first status (order creation — no previous state)
+    @ApiProperty({ example: 'PENDING' })
     @Column({ nullable: true })
     fromStatus: string;
 
@@ -38,8 +39,8 @@ export class OrderStatusLog {
     @Column({ type: 'enum', enum: OrderActor })
     actor: OrderActor;
 
-    @ApiProperty({ example: 'ERP acknowledged with ID SW-12345', nullable: true })
-    @Column({ type: 'text', nullable: true })
+    @ApiProperty({ example: 'ERP acknowledged with ID SW-12345' })
+    @Column({ type: 'text', default: '' })
     notes: string;
 
     @ApiProperty()

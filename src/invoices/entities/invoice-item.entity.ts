@@ -10,7 +10,7 @@ import {
 import { Invoice } from './invoice.entity';
 
 @Entity('invoice_items')
-@Unique(['invoice', 'itemNo'])
+@Unique(['invoice', 'productCode'])
 export class InvoiceItem {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
@@ -21,35 +21,27 @@ export class InvoiceItem {
 
     @ApiProperty({ example: 'MED10001' })
     @Column()
-    itemNo: string;
+    productCode: string;
+
+    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
+    @Column()
+    productName: string;
+
+    @ApiProperty({ example: '25.00' })
+    @Column()
+    productPrice: string;
+
+    @ApiProperty({ example: '22.00' })
+    @Column()
+    productDiscountPrice: string;
 
     @ApiProperty({ example: '2' })
     @Column()
     qty: string;
 
-    @ApiProperty({ example: '22.00' })
-    @Column()
-    discountPrice: string;
-
-    @ApiProperty({ example: '25.00' })
-    @Column()
-    price: string;
-
-    @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
-    @Column()
-    itemName: string;
-
     @ApiProperty({ example: '44.00' })
     @Column()
     total: string;
-
-    @ApiProperty({ example: '0' })
-    @Column()
-    isReturn: string;
-
-    @ApiProperty({ example: '' })
-    @Column()
-    returnComment: string;
 
     @ApiProperty()
     @CreateDateColumn()
