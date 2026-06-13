@@ -15,6 +15,11 @@ export class SearchProductsDto {
     @IsString()
     store_id: string;
 
+    @ApiProperty({ example: 'paracetamol', required: false, description: 'Search by name or composition' })
+    @IsOptional()
+    @IsString()
+    q?: string;
+
     @ApiProperty({ example: 1, required: false, default: 1 })
     @IsOptional()
     @Type(() => Number)

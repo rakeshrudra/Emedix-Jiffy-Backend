@@ -25,11 +25,7 @@ export class Address {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({
-    type: 'enum',
-    enum: ['Home', 'Work', 'Other'],
-    default: 'Other',
-  })
+  @Column({ type: 'enum', enum: ['Home', 'Work', 'Other'], default: 'Other' })
   label: AddressLabel;
 
   @Column({ name: 'address_line_1', default: '' })
@@ -40,6 +36,9 @@ export class Address {
 
   @Column({ name: 'formatted_address', type: 'text' })
   formattedAddress: string;
+
+  @Column({ name: 'place_id', nullable: true })
+  placeId: string | null;
 
   @Column()
   city: string;
@@ -59,8 +58,8 @@ export class Address {
   @Column('decimal', { precision: 10, scale: 7 })
   longitude: number;
 
-  @Column({ type: 'enum', enum: ['gps', 'manual'], default: 'manual' })
-  source: 'gps' | 'manual';
+  @Column({ type: 'enum', enum: ['gps', 'manual', 'places'], default: 'manual' })
+  source: 'gps' | 'manual' | 'places';
 
   @Column({ name: 'is_default', default: false })
   isDefault: boolean;
