@@ -13,6 +13,7 @@ import { FirebaseModule } from './firebase/firebase.module';
 import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { DemoModule } from './demo/demo.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -27,7 +28,7 @@ import databaseConfig from './database/database.config';
       useFactory: (configService: ConfigService) => ({
         ...configService.get('database'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: process.env.NODE_ENV !== 'production',
       }),
     }),
     FirebaseModule,
@@ -40,6 +41,7 @@ import databaseConfig from './database/database.config';
     ProductsModule,
     RedisModule,
     InvoicesModule,
+    DemoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
