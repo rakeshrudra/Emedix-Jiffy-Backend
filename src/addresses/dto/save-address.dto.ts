@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -20,6 +21,11 @@ export enum AddressLabel {
 }
 
 export class SaveAddressDto {
+  @ApiProperty({ example: '6f4db8bc-a6da-4fb9-bc2c-e3c49515b4be', required: false })
+  @IsUUID()
+  @IsOptional()
+  user_id?: string;
+
   @ApiProperty({ enum: AddressLabel, example: AddressLabel.Home, required: false })
   @IsOptional()
   @IsEnum(AddressLabel)
