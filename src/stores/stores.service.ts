@@ -139,7 +139,6 @@ export class StoresService {
         city, state, pincode, country,
         latitude, longitude, delivery_radius_km, phone,
         opening_time, closing_time, is_active,
-        created_at, updated_at,
         (
           6371 * ACOS(
             LEAST(1.0, COS(RADIANS(?)) * COS(RADIANS(latitude))
