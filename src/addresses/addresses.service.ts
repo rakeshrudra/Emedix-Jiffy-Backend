@@ -29,7 +29,13 @@ export class AddressesService {
    * First address is automatically set as default.
    */
   async saveAddress(userId: string, dto: SaveAddressDto) {
-    const existingCount = await this.addressRepository.count({ where: { userId } });
+    const resolvedUserId = userId || dto.user_id;
+
+    if (!resolvedUserId) {
+      throw new BadRequestException('Missing user_id');
+    }
+
+    const existingCount = await this.addressRepository.count({ where: { userId: resolvedUserId } });
 
     if (existingCount >= MAX_ADDRESSES_PER_USER) {
       throw new BadRequestException(
@@ -39,7 +45,7 @@ export class AddressesService {
 
     // Prevent near-duplicate: same lat/lng already saved for this user
     const duplicate = await this.addressRepository.findOne({
-      where: { userId, latitude: dto.latitude, longitude: dto.longitude },
+      where: { userId: resolvedUserId, latitude: dto.latitude, longitude: dto.longitude },
     });
     if (duplicate) {
       return { success: true, message: 'Address already saved', data: this.format(duplicate) };
@@ -48,11 +54,11 @@ export class AddressesService {
     const isDefault = existingCount === 0 ? true : (dto.is_default ?? false);
 
     if (isDefault) {
-      await this.clearDefault(userId);
+      await this.clearDefault(resolvedUserId);
     }
 
     const address = this.addressRepository.create({
-      userId,
+      userId: resolvedUserId,
       label: dto.label ?? 'Other',
       addressLine1: dto.address_line_1,
       addressLine2: dto.address_line_2 ?? '',
@@ -69,7 +75,7 @@ export class AddressesService {
     });
 
     const saved = await this.addressRepository.save(address);
-    this.logger.log(`Address saved for user ${userId}: ${saved.formattedAddress}`);
+    this.logger.log(`Address saved for user ${resolvedUserId}: ${saved.formattedAddress}`);
 
     return { success: true, data: this.format(saved) };
   }
