@@ -13,6 +13,7 @@ import { FirebaseModule } from './firebase/firebase.module';
 import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { StoresModule } from './stores/stores.module';
 import { DemoModule } from './demo/demo.module';
 import databaseConfig from './database/database.config';
 
@@ -41,6 +42,7 @@ import databaseConfig from './database/database.config';
     ProductsModule,
     RedisModule,
     InvoicesModule,
+    StoresModule,
     DemoModule,
   ],
   controllers: [AppController],

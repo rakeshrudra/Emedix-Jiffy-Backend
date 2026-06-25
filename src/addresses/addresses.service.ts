@@ -7,8 +7,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import { Address } from './entities/address.entity';
-import { MapsService } from '../maps/maps.service';
-import { GeocodeDto } from './dto/geocode.dto';
 import { SaveAddressDto } from './dto/save-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
 
@@ -21,37 +19,23 @@ export class AddressesService {
   constructor(
     @InjectRepository(Address)
     private readonly addressRepository: Repository<Address>,
-    private readonly mapsService: MapsService,
   ) {}
 
   /**
-   * Forward-geocode a free-text query and return a preview.
-   * Does NOT save to DB — user must confirm and call saveAddress.
-   */
-  async geocodeQuery(dto: GeocodeDto) {
-    const geo = await this.mapsService.forwardGeocode(dto.query);
-    return {
-      success: true,
-      data: {
-        formatted_address: geo.formattedAddress,
-        city: geo.city,
-        state: geo.state,
-        pincode: geo.pincode,
-        country: geo.country,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-      },
-    };
-  }
-
-  /**
-   * Save a confirmed address (GPS or manual).
-   * Frontend has already resolved coordinates before calling this.
+   * POST /api/address
+   * Saves a confirmed address (GPS, manual, or Places Autocomplete).
+   * Frontend resolves all fields before calling this.
    * Enforces max 5 addresses per user.
-   * First address saved is automatically set as default.
+   * First address is automatically set as default.
    */
   async saveAddress(userId: string, dto: SaveAddressDto) {
-    const existingCount = await this.addressRepository.count({ where: { userId } });
+    const resolvedUserId = userId || dto.user_id;
+
+    if (!resolvedUserId) {
+      throw new BadRequestException('Missing user_id');
+    }
+
+    const existingCount = await this.addressRepository.count({ where: { userId: resolvedUserId } });
 
     if (existingCount >= MAX_ADDRESSES_PER_USER) {
       throw new BadRequestException(
@@ -61,26 +45,25 @@ export class AddressesService {
 
     // Prevent near-duplicate: same lat/lng already saved for this user
     const duplicate = await this.addressRepository.findOne({
-      where: { userId, latitude: dto.latitude, longitude: dto.longitude },
+      where: { userId: resolvedUserId, latitude: dto.latitude, longitude: dto.longitude },
     });
     if (duplicate) {
       return { success: true, message: 'Address already saved', data: this.format(duplicate) };
     }
 
-    // First address for this user is always default
     const isDefault = existingCount === 0 ? true : (dto.is_default ?? false);
 
-    // If this one is being set as default, clear existing default first
     if (isDefault) {
-      await this.clearDefault(userId);
+      await this.clearDefault(resolvedUserId);
     }
 
     const address = this.addressRepository.create({
-      userId,
-      label: dto.label ?? null,
+      userId: resolvedUserId,
+      label: dto.label ?? 'Other',
       addressLine1: dto.address_line_1,
-      addressLine2: dto.address_line_2 ?? null,
+      addressLine2: dto.address_line_2 ?? '',
       formattedAddress: dto.formatted_address,
+      placeId: dto.place_id ?? null,
       city: dto.city,
       state: dto.state,
       pincode: dto.pincode,
@@ -92,26 +75,26 @@ export class AddressesService {
     });
 
     const saved = await this.addressRepository.save(address);
-    this.logger.log(`Address saved for user ${userId}: ${saved.formattedAddress}`);
+    this.logger.log(`Address saved for user ${resolvedUserId}: ${saved.formattedAddress}`);
 
     return { success: true, data: this.format(saved) };
   }
 
   /**
-   * List all saved addresses for the authenticated user.
-   * Default address is always returned first.
+   * GET /api/address
+   * List all saved addresses for the user. Default is returned first.
    */
   async getUserAddresses(userId: string) {
     const addresses = await this.addressRepository.find({
       where: { userId },
       order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
-    return { success: true, data: addresses.map(this.format) };
+    return { success: true, data: addresses.map((a) => this.format(a)) };
   }
 
   /**
-   * Update label or set as default.
-   * Ownership is enforced — address must belong to the requesting user.
+   * PATCH /api/address/:id
+   * Update label or set as default. Ownership enforced.
    */
   async updateAddress(userId: string, addressId: string, dto: UpdateAddressDto) {
     const address = await this.findOwned(userId, addressId);
@@ -128,8 +111,8 @@ export class AddressesService {
   }
 
   /**
-   * Delete an address.
-   * If the deleted address was default, promote the most recent remaining one.
+   * DELETE /api/address/:id
+   * Deletes an address. If deleted address was default, promotes the next most recent.
    */
   async removeAddress(userId: string, addressId: string) {
     const address = await this.findOwned(userId, addressId);
@@ -156,9 +139,7 @@ export class AddressesService {
     const address = await this.addressRepository.findOne({
       where: { id: addressId, userId },
     });
-    if (!address) {
-      throw new NotFoundException('Address not found');
-    }
+    if (!address) throw new NotFoundException('Address not found');
     return address;
   }
 
@@ -175,6 +156,7 @@ export class AddressesService {
       address_line_1: a.addressLine1,
       address_line_2: a.addressLine2,
       formatted_address: a.formattedAddress,
+      place_id: a.placeId ?? null,
       city: a.city,
       state: a.state,
       pincode: a.pincode,

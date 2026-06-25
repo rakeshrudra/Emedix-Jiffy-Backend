@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -20,44 +21,55 @@ export enum AddressLabel {
 }
 
 export class SaveAddressDto {
+  @ApiProperty({ example: '6f4db8bc-a6da-4fb9-bc2c-e3c49515b4be', required: false })
+  @IsUUID()
+  @IsOptional()
+  user_id?: string;
+
   @ApiProperty({ enum: AddressLabel, example: AddressLabel.Home, required: false })
   @IsOptional()
   @IsEnum(AddressLabel)
   label?: AddressLabel;
 
-  @ApiProperty({ example: '12 MG Road, Andheri East' })
+  @ApiProperty({ example: 'Flat 4, Krishna Apartments', description: 'House / flat / building — user fills this in' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(255)
   @Transform(({ value }) => value?.trim())
   address_line_1: string;
 
-  @ApiProperty({ example: 'Floor 2, Tower B', required: false })
+  @ApiProperty({ example: 'Rajpur Road', description: 'Street / locality — pre-filled from geocoding', required: false })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   @Transform(({ value }) => value?.trim())
   address_line_2?: string;
 
-  @ApiProperty({ example: '12 MG Road, Andheri East, Mumbai, Maharashtra 400069, India' })
+  @ApiProperty({ example: 'Rajpur Road, Dehradun, Uttarakhand 248001, India' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(500)
   formatted_address: string;
 
-  @ApiProperty({ example: 'Mumbai' })
+  @ApiProperty({ example: 'ChIJN1t_tDeuEmsRUsoyG83frY4', description: 'Google Place ID — set when saving from autocomplete flow', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  place_id?: string;
+
+  @ApiProperty({ example: 'Dehradun' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
   city: string;
 
-  @ApiProperty({ example: 'Maharashtra' })
+  @ApiProperty({ example: 'Uttarakhand' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(100)
   state: string;
 
-  @ApiProperty({ example: '400069' })
+  @ApiProperty({ example: '248001' })
   @IsNotEmpty()
   @IsString()
   @Matches(/^[1-9][0-9]{5}$/, { message: 'Enter a valid 6-digit Indian pincode' })
@@ -69,24 +81,29 @@ export class SaveAddressDto {
   @MaxLength(50)
   country?: string;
 
-  @ApiProperty({ example: 19.0785 })
+  @ApiProperty({ example: 30.3165 })
   @IsNotEmpty()
   @IsNumber()
   @Min(-90)
   @Max(90)
   latitude: number;
 
-  @ApiProperty({ example: 72.8781 })
+  @ApiProperty({ example: 78.0322 })
   @IsNotEmpty()
   @IsNumber()
   @Min(-180)
   @Max(180)
   longitude: number;
 
-  @ApiProperty({ example: 'gps', enum: ['gps', 'manual'], required: false })
+  @ApiProperty({
+    example: 'gps',
+    enum: ['gps', 'manual', 'places'],
+    description: 'gps = detected via device GPS | manual = typed + geocoded | places = Google Places Autocomplete',
+    required: false,
+  })
   @IsOptional()
-  @IsEnum(['gps', 'manual'])
-  source?: 'gps' | 'manual';
+  @IsEnum(['gps', 'manual', 'places'])
+  source?: 'gps' | 'manual' | 'places';
 
   @ApiProperty({ example: false, required: false, description: 'Set this as the default delivery address' })
   @IsOptional()

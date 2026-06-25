@@ -32,6 +32,13 @@ export class ProductsService {
             .skip(skip)
             .take(limit);
 
+        if (dto.q?.trim()) {
+            qb.andWhere(
+                '(p.productName LIKE :q OR p.productComposition LIKE :q)',
+                { q: `%${dto.q.trim()}%` },
+            );
+        }
+
         const [data, total] = await qb.getManyAndCount();
 
         return { data, total, page, limit };

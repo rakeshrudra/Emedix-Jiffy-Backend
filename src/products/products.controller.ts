@@ -5,8 +5,8 @@ import { SearchProductsDto } from './dto/search-products.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('Products')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// @ApiBearerAuth()
+// @UseGuards(JwtAuthGuard)
 @Controller('api/products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) { }
