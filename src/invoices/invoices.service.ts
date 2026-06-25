@@ -16,9 +16,9 @@ export class InvoicesService {
         @InjectRepository(InvoiceItem)
         private readonly invoiceItemRepository: Repository<InvoiceItem>,
         private readonly ordersService: OrdersService,
-    ) {}
+    ) { }
 
-    async handleInvoice(invoices: InvoiceDto[]): Promise<{ received: number; message: string }> {
+    async handleInvoice(invoices: InvoiceDto[]): Promise<{ message: string }> {
         for (const inv of invoices) {
             let invoice = await this.invoiceRepository.findOne({
                 where: { storeId: inv.store_id, invoiceNo: inv.invoice_no },
@@ -95,8 +95,7 @@ export class InvoicesService {
 
         this.logger.log(`Upserted ${invoices.length} invoice(s)`);
         return {
-            received: invoices.length,
-            message: `Successfully processed ${invoices.length} invoice(s)`,
+            message: `Successfully processed invoices`,
         };
     }
 }
