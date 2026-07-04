@@ -24,8 +24,8 @@ import { UpdateItemDto } from './dto/update-item.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('Cart')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('api/cart')
 export class CartController {
   constructor(private readonly cartService: CartService) { }
