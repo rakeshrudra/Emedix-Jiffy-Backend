@@ -18,7 +18,7 @@ export class CreateStoreDto {
   @IsString()
   @MaxLength(50)
   @Transform(({ value }) => value?.trim())
-  erp_store_code: string;
+  store_id: string;
 
   @ApiProperty({ example: 'Jiffy Pharmacy - Rajpur Road' })
   @IsNotEmpty()

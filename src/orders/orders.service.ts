@@ -74,7 +74,7 @@ export class OrdersService {
         }
 
         // 3. Store must be active and open at order creation time
-        const store = await this.storeRepository.findOne({ where: { erpStoreCode: dto.store_id } });
+        const store = await this.storeRepository.findOne({ where: { storeId: dto.store_id } });
         if (!store || !store.isActive) {
             throw new BadRequestException('This store is currently unavailable. Please try again later.');
         }

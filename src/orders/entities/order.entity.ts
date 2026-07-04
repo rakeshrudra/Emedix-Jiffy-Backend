@@ -44,7 +44,7 @@ export class Order {
     userId: string;
 
     @ApiProperty({ example: '001' })
-    @Column()
+    @Column({ name: 'store_id' })
     storeId: string;
 
     @ApiProperty({ enum: OrderStatus, example: OrderStatus.PENDING })

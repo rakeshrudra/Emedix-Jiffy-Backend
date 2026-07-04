@@ -25,20 +25,20 @@ export class StoresService {
 
   /**
    * POST /api/stores
-   * Adds a new store. erp_store_code must be unique.
+   * Adds a new store. store_id must be unique.
    */
   async create(dto: CreateStoreDto) {
     const existing = await this.storeRepository.findOne({
-      where: { erpStoreCode: dto.erp_store_code },
+      where: { storeId: dto.store_id },
     });
     if (existing) {
       throw new ConflictException(
-        `Store with ERP code '${dto.erp_store_code}' already exists.`,
+        `Store with ERP code '${dto.store_id}' already exists.`,
       );
     }
 
     const store = this.storeRepository.create({
-      erpStoreCode: dto.erp_store_code,
+      storeId: dto.store_id,
       name: dto.name,
       addressLine1: dto.address_line_1,
       formattedAddress: dto.formatted_address,
@@ -57,7 +57,7 @@ export class StoresService {
     });
 
     const saved = await this.storeRepository.save(store);
-    this.logger.log(`Store created: ${saved.name} (${saved.erpStoreCode})`);
+    this.logger.log(`Store created: ${saved.name} (${saved.storeId})`);
 
     return { success: true, data: this.format(saved) };
   }
@@ -135,7 +135,7 @@ export class StoresService {
     const rows: any[] = await this.storeRepository.query(
       `
       SELECT
-        id, erp_store_code, name, address_line_1, formatted_address, place_id,
+        id, store_id, name, address_line_1, formatted_address, place_id,
         city, state, pincode, country,
         latitude, longitude, delivery_radius_km, phone,
         opening_time, closing_time, is_active,
@@ -157,7 +157,7 @@ export class StoresService {
 
     return rows.map((r) => ({
       id: r.id,
-      erp_store_code: r.erp_store_code,
+      store_id: r.store_id,
       name: r.name,
       address_line_1: r.address_line_1,
       formatted_address: r.formatted_address,
@@ -207,7 +207,7 @@ export class StoresService {
   private format(s: Store) {
     return {
       id: s.id,
-      erp_store_code: s.erpStoreCode,
+      store_id: s.storeId,
       name: s.name,
       address_line_1: s.addressLine1,
       formatted_address: s.formattedAddress,

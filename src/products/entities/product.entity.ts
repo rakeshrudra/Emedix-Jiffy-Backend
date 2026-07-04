@@ -17,7 +17,7 @@ export class Product {
     id: number;
 
     @ApiProperty({ example: '001' })
-    @Column()
+    @Column({ name: 'store_id' })
     storeId: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
