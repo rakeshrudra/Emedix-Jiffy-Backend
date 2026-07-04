@@ -23,12 +23,27 @@ export class CartService {
     private readonly itemRepo: Repository<CartItem>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
-  ) {}
+  ) { }
 
   // ─── GET /api/cart ───────────────────────────────────────────────────────────
 
   async getCart(userId: string) {
-    const cart = await this.findOrCreateCart(userId);
+    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
+
+    if (!cart) {
+      return {
+        success: true,
+        data: {
+          id: null,
+          store_id: null,
+          items: [],
+          item_count: 0,
+          subtotal: 0,
+          updated_at: null,
+        },
+      };
+    }
+
     return { success: true, data: this.format(cart) };
   }
 
@@ -206,15 +221,6 @@ export class CartService {
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
-
-  private async findOrCreateCart(userId: string): Promise<Cart> {
-    let cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-    if (!cart) {
-      cart = this.cartRepo.create({ userId, storeId: '', items: [] });
-      await this.cartRepo.save(cart);
-    }
-    return cart;
-  }
 
   private format(cart: Cart) {
     const items = (cart.items ?? []).map((i) => ({
