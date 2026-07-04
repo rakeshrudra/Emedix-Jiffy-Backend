@@ -16,6 +16,8 @@ import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
+import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 
 const USER_CANCELLABLE_STATES = [OrderStatus.PENDING];
 const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
@@ -43,6 +45,10 @@ export class OrdersService {
         private readonly statusLogRepository: Repository<OrderStatusLog>,
         @InjectRepository(Invoice)
         private readonly invoiceRepository: Repository<Invoice>,
+        @InjectRepository(Product)
+        private readonly productRepository: Repository<Product>,
+        @InjectRepository(Store)
+        private readonly storeRepository: Repository<Store>,
         private readonly dataSource: DataSource,
         @Inject(REDIS_CLIENT)
         private readonly redis: Redis,
@@ -67,9 +73,39 @@ export class OrdersService {
             return existing;
         }
 
+        // 3. Store must be active and open at order creation time
+        const store = await this.storeRepository.findOne({ where: { erpStoreCode: dto.store_id } });
+        if (!store || !store.isActive) {
+            throw new BadRequestException('This store is currently unavailable. Please try again later.');
+        }
+        if (!this.computeIsOpen(store.openingTime, store.closingTime)) {
+            throw new BadRequestException(`Store is closed. It opens at ${store.openingTime}.`);
+        }
+
+        // 4. Re-validate stock for every item at order time
+        const stockErrors: string[] = [];
+        for (const item of dto.items) {
+            const product = await this.productRepository.findOne({
+                where: { productCode: item.product_code, storeId: dto.store_id },
+            });
+            if (!product || product.status !== 'Enable') {
+                stockErrors.push(`"${item.product_name}" is no longer available`);
+            } else {
+                const stock = parseInt(product.productStock, 10) || 0;
+                if (stock <= 0) {
+                    stockErrors.push(`"${item.product_name}" is out of stock`);
+                } else if (stock < item.qty) {
+                    stockErrors.push(`"${item.product_name}" only has ${stock} unit(s) available (requested ${item.qty})`);
+                }
+            }
+        }
+        if (stockErrors.length > 0) {
+            throw new BadRequestException({ message: 'Some items are unavailable', errors: stockErrors });
+        }
+
         const orderNumber = await this.generateOrderNumber();
 
-        // 3. Save order + items + initial status log in one transaction
+        // 5. Save order + items + initial status log in one transaction
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
@@ -285,6 +321,17 @@ export class OrdersService {
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────
+
+    private computeIsOpen(openingTime: string | null, closingTime: string | null): boolean {
+        if (!openingTime || !closingTime) return true;
+        const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+        const [oh, om] = openingTime.split(':').map(Number);
+        const [ch, cm] = closingTime.split(':').map(Number);
+        const cur = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+        const open = oh * 60 + om;
+        const close = ch * 60 + cm;
+        return close > open ? cur >= open && cur < close : cur >= open || cur < close;
+    }
 
     private async generateOrderNumber(): Promise<string> {
         const now = new Date();

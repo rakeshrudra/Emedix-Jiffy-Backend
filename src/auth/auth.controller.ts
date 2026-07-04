@@ -70,8 +70,8 @@ export class AuthController {
    */
   @Patch('profile')
   @HttpCode(HttpStatus.OK)
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Update user profile (name)',
     description: 'Set or update the authenticated user\'s display name. Call this after is_new_user = true.',
@@ -87,8 +87,8 @@ export class AuthController {
    * Returns the authenticated user's profile.
    */
   @Get('me')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile fetched successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })

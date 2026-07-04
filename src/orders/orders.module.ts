@@ -8,10 +8,12 @@ import { OrderItem } from './entities/order-item.entity';
 import { OrderStatusLog } from './entities/order-status-log.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Invoice } from '../invoices/entities/invoice.entity';
+import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, Invoice]),
+        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, Invoice, Product, Store]),
         JwtModule.register({}),
     ],
     controllers: [OrdersController],

@@ -14,7 +14,7 @@ import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { StoresModule } from './stores/stores.module';
-import { DemoModule } from './demo/demo.module';
+import { CartModule } from './cart/cart.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -43,7 +43,7 @@ import databaseConfig from './database/database.config';
     RedisModule,
     InvoicesModule,
     StoresModule,
-    DemoModule,
+    CartModule,
   ],
   controllers: [AppController],
   providers: [AppService],

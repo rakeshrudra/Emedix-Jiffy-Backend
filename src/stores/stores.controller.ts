@@ -29,7 +29,7 @@ import { StoresService } from './stores.service';
 @ApiTags('Stores')
 @Controller('api/stores')
 export class StoresController {
-  constructor(private readonly storesService: StoresService) {}
+  constructor(private readonly storesService: StoresService) { }
 
   /**
    * POST /api/stores
@@ -52,8 +52,8 @@ export class StoresController {
    * is_open flag indicates whether the store is currently open (IST).
    */
   @Get('nearest')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get nearest active store for a location' })
   @ApiQuery({ name: 'lat', required: true, example: 30.3165 })
   @ApiQuery({ name: 'lng', required: true, example: 78.0322 })
@@ -74,8 +74,8 @@ export class StoresController {
    * Ordered by distance ascending. Used for manual store switching.
    */
   @Get('reachable')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all stores reachable from a location (ordered by distance)' })
   @ApiQuery({ name: 'lat', required: true, example: 30.3165 })
   @ApiQuery({ name: 'lng', required: true, example: 78.0322 })
@@ -95,8 +95,8 @@ export class StoresController {
    * Returns a single store by UUID.
    */
   @Get(':id')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single store by UUID' })
   @ApiParam({ name: 'id', description: 'Store UUID' })
   @ApiResponse({ status: 200, description: 'Store details' })

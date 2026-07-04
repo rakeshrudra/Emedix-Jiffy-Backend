@@ -17,11 +17,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { MapsService } from './maps.service';
 
 @ApiTags('Maps')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('api/maps')
 export class MapsController {
-  constructor(private readonly mapsService: MapsService) {}
+  constructor(private readonly mapsService: MapsService) { }
 
   /**
    * GET /api/maps/autocomplete?input=Rajpur Road
