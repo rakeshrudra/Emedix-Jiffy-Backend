@@ -109,6 +109,23 @@ export class CartService {
     if (dto.quantity === 0) {
       await this.itemRepo.remove(item);
     } else {
+      const product = await this.productRepo.findOne({
+        where: { productCode, storeId: cart.storeId },
+      });
+
+      if (!product || product.status !== 'Enable') {
+        throw new BadRequestException('Product is no longer available');
+      }
+
+      const stock = parseInt(product.productStock, 10) || 0;
+      if (dto.quantity > stock) {
+        throw new BadRequestException(
+          stock === 0
+            ? 'Product is out of stock'
+            : `Only ${stock} unit(s) available`,
+        );
+      }
+
       item.quantity = dto.quantity;
       await this.itemRepo.save(item);
     }
