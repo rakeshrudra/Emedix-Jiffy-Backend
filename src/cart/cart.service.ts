@@ -1,150 +1,149 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cart } from './entities/cart.entity';
-import { CartItem } from './entities/cart-item.entity';
 import { ProductsService } from '../products/products.service';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { CartItem } from './entities/cart-item.entity';
+import { Cart } from './entities/cart.entity';
 
 @Injectable()
 export class CartService {
-  private readonly logger = new Logger(CartService.name);
-
   constructor(
     @InjectRepository(Cart)
     private readonly cartRepo: Repository<Cart>,
     @InjectRepository(CartItem)
     private readonly itemRepo: Repository<CartItem>,
     private readonly productsService: ProductsService,
-  ) { }
+  ) {}
 
-  // ─── GET /api/cart ───────────────────────────────────────────────────────────
-
-  async getCart(userId: string) {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-
-    if (!cart) {
+  async getCart(userId: string, storeId?: string) {
+    if (storeId) {
+      const cart = await this.findCart(userId, storeId);
       return {
         success: true,
-        data: {
-          id: null,
-          store_id: null,
-          items: [],
-          item_count: 0,
-          subtotal: 0,
-          updated_at: null,
-        },
+        data: cart ? this.format(cart) : this.emptyCart(storeId),
       };
     }
 
-    return { success: true, data: this.format(cart) };
-  }
-
-  // ─── POST /api/cart/items ────────────────────────────────────────────────────
-
-  async addItem(userId: string, dto: AddItemDto) {
-    const product = await this.productsService.findByCode(dto.store_id, dto.product_code);
-
-    if (!product) throw new NotFoundException('Product not found in this store');
-    this.productsService.assertAvailable(product, product.productName, 1);
-
-    let cart = await this.cartRepo.findOne({
+    const carts = await this.cartRepo.find({
       where: { userId },
       relations: ['items'],
+      order: { updatedAt: 'DESC' },
     });
 
-    if (cart && cart.storeId !== dto.store_id) {
-      throw new BadRequestException(
-        'Your cart has items from a different store. Clear your cart to switch stores.',
+    return {
+      success: true,
+      data: {
+        carts: carts.map((cart) => this.format(cart)),
+        cart_count: carts.length,
+      },
+    };
+  }
+
+  async addItem(userId: string, dto: AddItemDto) {
+    const product = await this.productsService.findByCode(
+      dto.store_id,
+      dto.product_code,
+    );
+    if (!product)
+      throw new NotFoundException('Product not found in this store');
+
+    let cart = await this.findCart(userId, dto.store_id);
+
+    if (!cart) {
+      cart = await this.cartRepo.save(
+        this.cartRepo.create({ userId, storeId: dto.store_id, items: [] }),
       );
     }
 
-    if (!cart) {
-      cart = this.cartRepo.create({ userId, storeId: dto.store_id, items: [] });
-      await this.cartRepo.save(cart);
-    }
-
-    const existing = cart.items.find((i) => i.productCode === dto.product_code);
+    const existing = cart.items.find(
+      (item) => item.productCode === dto.product_code,
+    );
+    const requestedQuantity = existing ? existing.quantity + 1 : 1;
+    this.productsService.assertAvailable(
+      product,
+      product.productName,
+      requestedQuantity,
+    );
 
     if (existing) {
-      existing.quantity += 1;
+      existing.quantity = requestedQuantity;
       await this.itemRepo.save(existing);
     } else {
-      const item = this.itemRepo.create({
-        cart,
-        productCode: product.productCode,
-        productName: product.productName,
-        productPrice: parseFloat(product.productPrice) || 0,
-        productDiscountPrice: parseFloat(product.productDiscountPrice) || 0,
-        quantity: 1,
-      });
-      await this.itemRepo.save(item);
+      await this.itemRepo.save(
+        this.itemRepo.create({
+          cart,
+          productCode: product.productCode,
+          productName: product.productName,
+          productPrice: parseFloat(product.productPrice) || 0,
+          productDiscountPrice: parseFloat(product.productDiscountPrice) || 0,
+          quantity: 1,
+        }),
+      );
     }
 
-    const updated = await this.cartRepo.findOne({ where: { id: cart.id }, relations: ['items'] });
-    return { success: true, data: this.format(updated) };
+    return {
+      success: true,
+      data: this.format(await this.getCartOrThrow(userId, dto.store_id)),
+    };
   }
 
-  // ─── PATCH /api/cart/items/:productCode ─────────────────────────────────────
-
-  async updateItem(userId: string, productCode: string, dto: UpdateItemDto) {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-    if (!cart) throw new NotFoundException('Cart not found');
-
-    const item = cart.items.find((i) => i.productCode === productCode);
-    if (!item) throw new NotFoundException('Item not in cart');
+  async updateItem(
+    userId: string,
+    productCode: string,
+    dto: UpdateItemDto,
+    storeId: string,
+  ) {
+    const cart = await this.getCartOrThrow(userId, storeId);
+    const item = this.getItemOrThrow(cart, productCode);
 
     if (dto.quantity === 0) {
       await this.itemRepo.remove(item);
     } else {
-      const product = await this.productsService.findByCode(cart.storeId, productCode);
-      this.productsService.assertAvailable(product, item.productName, dto.quantity);
+      const product = await this.productsService.findByCode(
+        cart.storeId,
+        productCode,
+      );
+      this.productsService.assertAvailable(
+        product,
+        item.productName,
+        dto.quantity,
+      );
 
       item.quantity = dto.quantity;
       await this.itemRepo.save(item);
     }
 
-    const updated = await this.cartRepo.findOne({ where: { id: cart.id }, relations: ['items'] });
-    return { success: true, data: this.format(updated) };
+    return {
+      success: true,
+      data: this.format(await this.getCartOrThrow(userId, cart.storeId)),
+    };
   }
 
-  // ─── DELETE /api/cart/items/:productCode ─────────────────────────────────────
-
-  async removeItem(userId: string, productCode: string) {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-    if (!cart) throw new NotFoundException('Cart not found');
-
-    const item = cart.items.find((i) => i.productCode === productCode);
-    if (!item) throw new NotFoundException('Item not in cart');
+  async removeItem(userId: string, productCode: string, storeId: string) {
+    const cart = await this.getCartOrThrow(userId, storeId);
+    const item = this.getItemOrThrow(cart, productCode);
 
     await this.itemRepo.remove(item);
-    const updated = await this.cartRepo.findOne({ where: { id: cart.id }, relations: ['items'] });
-    return { success: true, data: this.format(updated) };
+
+    return {
+      success: true,
+      data: this.format(await this.getCartOrThrow(userId, cart.storeId)),
+    };
   }
 
-  // ─── DELETE /api/cart ────────────────────────────────────────────────────────
-
-  async clearCart(userId: string) {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-    if (cart) {
-      await this.itemRepo.remove(cart.items);
-      await this.cartRepo.remove(cart);
-    }
+  async clearCart(userId: string, storeId: string) {
+    await this.clearByUserAndStoreId(userId, storeId);
     return { success: true, message: 'Cart cleared' };
   }
 
-  // ─── POST /api/cart/validate ─────────────────────────────────────────────────
-  // Checks cart contents only: stock availability and price changes.
-  // Location/reachability is handled by the frontend via GET /api/stores/reachable.
-
-  async validateCart(userId: string) {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
+  async validateCart(userId: string, storeId: string) {
+    const cart = await this.findCart(userId, storeId);
 
     if (!cart || cart.items.length === 0) {
       throw new BadRequestException('Cart is empty');
@@ -154,42 +153,61 @@ export class CartService {
     const itemResults: any[] = [];
 
     for (const cartItem of cart.items) {
-      const product = await this.productsService.findByCode(cart.storeId, cartItem.productCode);
+      const product = await this.productsService.findByCode(
+        cart.storeId,
+        cartItem.productCode,
+      );
 
       const itemResult: any = {
         product_code: cartItem.productCode,
         product_name: cartItem.productName,
         quantity: cartItem.quantity,
-        cart_price: Number(cartItem.productDiscountPrice) || Number(cartItem.productPrice),
+        cart_price:
+          Number(cartItem.productDiscountPrice) ||
+          Number(cartItem.productPrice),
         issues: [],
       };
 
-      const availabilityIssues = this.productsService.checkAvailability(product, cartItem.quantity);
+      const availabilityIssues = this.productsService.checkAvailability(
+        product,
+        cartItem.quantity,
+      );
       itemResult.issues.push(...availabilityIssues);
-      itemResult.available = product?.status === 'Enable' && this.productsService.parseStock(product) > 0;
+      itemResult.available =
+        product?.status === 'Enable' &&
+        this.productsService.parseStock(product) > 0;
 
       if (product && itemResult.available) {
         const stock = this.productsService.parseStock(product);
         if (cartItem.quantity > stock) itemResult.max_quantity = stock;
 
         const currentPrice = this.productsService.getEffectivePrice(product);
-        const cartPrice = Number(cartItem.productDiscountPrice) || Number(cartItem.productPrice);
+        const cartPrice =
+          Number(cartItem.productDiscountPrice) ||
+          Number(cartItem.productPrice);
 
         if (Math.abs(currentPrice - cartPrice) > 0.01) {
-          itemResult.issues.push(`Price changed from ₹${cartPrice} to ₹${currentPrice}`);
+          itemResult.issues.push(
+            `Price changed from Rs.${cartPrice} to Rs.${currentPrice}`,
+          );
           itemResult.current_price = currentPrice;
         }
       }
 
       itemResults.push(itemResult);
       if (itemResult.issues.length > 0) {
-        issues.push(...itemResult.issues.map((i: string) => `${cartItem.productName}: ${i}`));
+        issues.push(
+          ...itemResult.issues.map(
+            (issue: string) => `${cartItem.productName}: ${issue}`,
+          ),
+        );
       }
     }
 
     return {
       success: true,
       data: {
+        store_id: cart.storeId,
         valid: issues.length === 0,
         issues,
         items: itemResults,
@@ -197,37 +215,89 @@ export class CartService {
     };
   }
 
-  // ─── Internal helper used by OrdersService to clear cart post-order ──────────
-
   async clearByUserId(userId: string): Promise<void> {
-    const cart = await this.cartRepo.findOne({ where: { userId }, relations: ['items'] });
-    if (cart) {
-      await this.itemRepo.remove(cart.items);
-      await this.cartRepo.remove(cart);
-    }
+    const carts = await this.cartRepo.find({
+      where: { userId },
+      relations: ['items'],
+    });
+    await this.removeCarts(carts);
   }
 
-  // ─── Private helpers ─────────────────────────────────────────────────────────
+  async clearByUserAndStoreId(userId: string, storeId: string): Promise<void> {
+    const cart = await this.findCart(userId, storeId);
+    await this.removeCarts(cart ? [cart] : []);
+  }
+
+  private async findCart(
+    userId: string,
+    storeId: string,
+  ): Promise<Cart | null> {
+    return this.cartRepo.findOne({
+      where: { userId, storeId },
+      relations: ['items'],
+    });
+  }
+
+  private async getCartOrThrow(userId: string, storeId: string): Promise<Cart> {
+    const cart = await this.findCart(userId, storeId);
+    if (!cart) throw new NotFoundException('Cart not found');
+    return cart;
+  }
+
+  private getItemOrThrow(cart: Cart, productCode: string): CartItem {
+    const item = cart.items.find(
+      (cartItem) => cartItem.productCode === productCode,
+    );
+    if (!item) throw new NotFoundException('Item not in cart');
+    return item;
+  }
+
+  private async removeCarts(carts: Cart[]): Promise<void> {
+    if (carts.length === 0) return;
+
+    const items = carts.flatMap((cart) => cart.items);
+    if (items.length > 0) {
+      await this.itemRepo.remove(items);
+    }
+
+    await this.cartRepo.remove(carts);
+  }
+
+  private emptyCart(storeId: string | null = null) {
+    return {
+      id: null,
+      store_id: storeId,
+      items: [],
+      item_count: 0,
+      subtotal: 0,
+      updated_at: null,
+    };
+  }
 
   private format(cart: Cart) {
-    const items = (cart.items ?? []).map((i) => ({
-      id: i.id,
-      product_code: i.productCode,
-      product_name: i.productName,
-      product_price: Number(i.productPrice),
-      product_discount_price: Number(i.productDiscountPrice),
-      effective_price: Number(i.productDiscountPrice) || Number(i.productPrice),
-      quantity: i.quantity,
-      line_total: (Number(i.productDiscountPrice) || Number(i.productPrice)) * i.quantity,
-    }));
+    const items = (cart.items ?? []).map((item) => {
+      const effectivePrice =
+        Number(item.productDiscountPrice) || Number(item.productPrice);
 
-    const subtotal = items.reduce((sum, i) => sum + i.line_total, 0);
+      return {
+        id: item.id,
+        product_code: item.productCode,
+        product_name: item.productName,
+        product_price: Number(item.productPrice),
+        product_discount_price: Number(item.productDiscountPrice),
+        effective_price: effectivePrice,
+        quantity: item.quantity,
+        line_total: effectivePrice * item.quantity,
+      };
+    });
+
+    const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
 
     return {
       id: cart.id,
       store_id: cart.storeId,
       items,
-      item_count: items.reduce((sum, i) => sum + i.quantity, 0),
+      item_count: items.reduce((sum, item) => sum + item.quantity, 0),
       subtotal: Math.round(subtotal * 100) / 100,
       updated_at: cart.updatedAt,
     };
