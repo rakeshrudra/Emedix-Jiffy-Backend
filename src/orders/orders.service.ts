@@ -1,10 +1,10 @@
 import {
-    BadRequestException,
-    ForbiddenException,
-    Inject,
-    Injectable,
-    Logger,
-    NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -26,7 +26,7 @@ const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
-    [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+  [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
 };
 
 // Admin panel (Phase 2): CONFIRMED → DISPATCHED → DELIVERED
@@ -36,313 +36,368 @@ const IDEMPOTENCY_PREFIX = 'order:idem:';
 
 @Injectable()
 export class OrdersService {
-    private readonly logger = new Logger(OrdersService.name);
+  private readonly logger = new Logger(OrdersService.name);
 
-    constructor(
-        @InjectRepository(Order)
-        private readonly orderRepository: Repository<Order>,
-        @InjectRepository(OrderItem)
-        private readonly orderItemRepository: Repository<OrderItem>,
-        @InjectRepository(OrderStatusLog)
-        private readonly statusLogRepository: Repository<OrderStatusLog>,
-        private readonly invoicesService: InvoicesService,
-        private readonly productsService: ProductsService,
-        private readonly storesService: StoresService,
-        private readonly cartService: CartService,
-        private readonly dataSource: DataSource,
-        @Inject(REDIS_CLIENT)
-        private readonly redis: Redis,
-    ) { }
+  constructor(
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    @InjectRepository(OrderItem)
+    private readonly orderItemRepository: Repository<OrderItem>,
+    @InjectRepository(OrderStatusLog)
+    private readonly statusLogRepository: Repository<OrderStatusLog>,
+    private readonly invoicesService: InvoicesService,
+    private readonly productsService: ProductsService,
+    private readonly storesService: StoresService,
+    private readonly cartService: CartService,
+    private readonly dataSource: DataSource,
+    @Inject(REDIS_CLIENT)
+    private readonly redis: Redis,
+  ) {}
 
-    async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
-        // 1. Redis idempotency — fast path
-        const redisKey = `${IDEMPOTENCY_PREFIX}${dto.idempotency_key}`;
-        const cachedOrderId = await this.redis.get(redisKey);
-        if (cachedOrderId) {
-            this.logger.warn(`Idempotency hit (Redis) for key: ${dto.idempotency_key}`);
-            return this.orderRepository.findOne({ where: { id: cachedOrderId }, relations: ['items'] });
-        }
-
-        // 2. DB unique index — durable backstop for race conditions
-        const existing = await this.orderRepository.findOne({
-            where: { idempotencyKey: dto.idempotency_key },
-        });
-        if (existing) {
-            this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
-            this.redis.set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL).catch(() => { });
-            return existing;
-        }
-
-        // 3. Store must be active and open at order creation time
-        await this.storesService.assertOrderable(dto.store_id);
-
-        // 4. Re-validate stock for every item at order time
-        const stockErrors: string[] = [];
-        for (const item of dto.items) {
-            const product = await this.productsService.findByCode(dto.store_id, item.product_code);
-            const issues = this.productsService.checkAvailability(product, item.qty);
-            stockErrors.push(...issues.map((issue) => `"${item.product_name}" ${issue.toLowerCase()}`));
-        }
-        if (stockErrors.length > 0) {
-            throw new BadRequestException({ message: 'Some items are unavailable', errors: stockErrors });
-        }
-
-        const orderNumber = await this.generateOrderNumber();
-
-        // 5. Save order + items + initial status log in one transaction
-        const queryRunner = this.dataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
-
-        let savedOrder: Order;
-
-        try {
-            const items = dto.items.map((i) =>
-                this.orderItemRepository.create({
-                    productCode: i.product_code,
-                    productName: i.product_name,
-                    productCompany: i.product_company ?? '',
-                    productType: i.product_type ?? '',
-                    packagingOfMedicines: i.packaging_of_medicines ?? '',
-                    productComposition: i.product_composition ?? '',
-                    qty: i.qty,
-                    productPrice: i.unit_price,
-                    productDiscountPrice: i.discount_price,
-                    total: (parseFloat(i.discount_price) * i.qty).toFixed(2),
-                    hsnCode: i.hsn_code ?? '',
-                }),
-            );
-
-            const order = this.orderRepository.create({
-                orderNumber,
-                userId,
-                storeId: dto.store_id,
-                status: OrderStatus.PENDING,
-                paymentStatus: PaymentStatus.PAID,
-                idempotencyKey: dto.idempotency_key,
-                subtotal: dto.subtotal,
-                deliveryCharge: dto.delivery_charge,
-                discount: dto.discount ?? 0,
-                totalAmount: dto.total_amount,
-                paymentMethod: dto.payment_method,
-                paymentGatewayRef: dto.payment_gateway_ref,
-                customerName: dto.customer_name,
-                customerPhone: dto.customer_phone,
-                deliveryAddress: JSON.stringify(dto.delivery_address),
-                prescriptionUrls: dto.prescription_urls ? JSON.stringify(dto.prescription_urls) : '',
-                items,
-            });
-
-            savedOrder = await queryRunner.manager.save(Order, order);
-
-            await queryRunner.manager.save(
-                OrderStatusLog,
-                this.statusLogRepository.create({
-                    order: { id: savedOrder.id } as Order,
-                    fromStatus: null,
-                    toStatus: OrderStatus.PENDING,
-                    actor: OrderActor.SYSTEM,
-                    notes: 'Order created after payment success',
-                }),
-            );
-
-            await queryRunner.commitTransaction();
-        } catch (err) {
-            await queryRunner.rollbackTransaction();
-            throw err;
-        } finally {
-            await queryRunner.release();
-        }
-
-        // 6. Cache idempotency key — best-effort, never block the response
-        this.redis.set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL).catch((err) => {
-            this.logger.warn(`Redis idempotency cache failed for ${dto.idempotency_key}: ${err.message}`);
-        });
-
-        // 7. Clear the user's cart now that the order is placed — best-effort
-        this.cartService.clearByUserId(userId).catch((err) => {
-            this.logger.warn(`Failed to clear cart for user ${userId} after order: ${err.message}`);
-        });
-
-        return savedOrder;
+  async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
+    // 1. Redis idempotency — fast path
+    const redisKey = `${IDEMPOTENCY_PREFIX}${dto.idempotency_key}`;
+    const cachedOrderId = await this.redis.get(redisKey);
+    if (cachedOrderId) {
+      this.logger.warn(
+        `Idempotency hit (Redis) for key: ${dto.idempotency_key}`,
+      );
+      return this.orderRepository.findOne({
+        where: { id: cachedOrderId },
+        relations: ['items'],
+      });
     }
 
-    async getOrdersByUser(
-        userId: string,
-        page: number,
-        limit: number,
-    ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
-        const [data, total] = await this.orderRepository.findAndCount({
-            where: { userId },
-            order: { createdAt: 'DESC' },
-            relations: ['items'],
-            skip: (page - 1) * limit,
-            take: limit,
-        });
-        return { data, total, page, pages: Math.ceil(total / limit) };
+    // 2. DB unique index — durable backstop for race conditions
+    const existing = await this.orderRepository.findOne({
+      where: { idempotencyKey: dto.idempotency_key },
+    });
+    if (existing) {
+      this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
+      this.redis
+        .set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL)
+        .catch(() => {});
+      return existing;
     }
 
-    async getOrderById(orderId: string, userId: string): Promise<Order> {
-        const order = await this.orderRepository.findOne({
-            where: { id: orderId, userId },
-            relations: ['items', 'statusLogs'],
-        });
-        if (!order) throw new NotFoundException('Order not found');
-        return order;
+    // 3. Store must be active and open at order creation time
+    await this.storesService.assertOrderable(dto.store_id);
+
+    // 4. Re-validate stock for every item at order time
+    const stockErrors: string[] = [];
+    for (const item of dto.items) {
+      const product = await this.productsService.findByCode(
+        dto.store_id,
+        item.product_code,
+      );
+      const issues = this.productsService.checkAvailability(product, item.qty);
+      stockErrors.push(
+        ...issues.map(
+          (issue) => `"${item.product_name}" ${issue.toLowerCase()}`,
+        ),
+      );
+    }
+    if (stockErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'Some items are unavailable',
+        errors: stockErrors,
+      });
     }
 
-    async getOrderInvoice(orderId: string, userId: string): Promise<Invoice> {
-        const order = await this.orderRepository.findOne({ where: { id: orderId } });
-        if (!order) throw new NotFoundException('Order not found');
-        if (order.userId !== userId) throw new ForbiddenException('Access denied');
+    const orderNumber = await this.generateOrderNumber();
 
-        const invoice = await this.invoicesService.findByOrderNumber(order.orderNumber);
-        if (!invoice) throw new NotFoundException('Invoice not ready yet');
+    // 5. Save order + items + initial status log in one transaction
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-        return invoice;
+    let savedOrder: Order;
+
+    try {
+      const items = dto.items.map((i) =>
+        this.orderItemRepository.create({
+          productCode: i.product_code,
+          productName: i.product_name,
+          productCompany: i.product_company ?? '',
+          productType: i.product_type ?? '',
+          packagingOfMedicines: i.packaging_of_medicines ?? '',
+          productComposition: i.product_composition ?? '',
+          qty: i.qty,
+          productPrice: i.unit_price,
+          productDiscountPrice: i.discount_price,
+          total: (parseFloat(i.discount_price) * i.qty).toFixed(2),
+          hsnCode: i.hsn_code ?? '',
+        }),
+      );
+
+      const order = this.orderRepository.create({
+        orderNumber,
+        userId,
+        storeId: dto.store_id,
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PAID,
+        idempotencyKey: dto.idempotency_key,
+        subtotal: dto.subtotal,
+        deliveryCharge: dto.delivery_charge,
+        discount: dto.discount ?? 0,
+        totalAmount: dto.total_amount,
+        paymentMethod: dto.payment_method,
+        paymentGatewayRef: dto.payment_gateway_ref,
+        customerName: dto.customer_name,
+        customerPhone: dto.customer_phone,
+        deliveryAddress: JSON.stringify(dto.delivery_address),
+        prescriptionUrls: dto.prescription_urls
+          ? JSON.stringify(dto.prescription_urls)
+          : '',
+        items,
+      });
+
+      savedOrder = await queryRunner.manager.save(Order, order);
+
+      await queryRunner.manager.save(
+        OrderStatusLog,
+        this.statusLogRepository.create({
+          order: { id: savedOrder.id } as Order,
+          fromStatus: null,
+          toStatus: OrderStatus.PENDING,
+          actor: OrderActor.SYSTEM,
+          notes: 'Order created after payment success',
+        }),
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
 
-    async cancelOrder(orderId: string, userId: string, dto: CancelOrderDto): Promise<Order> {
-        const order = await this.orderRepository.findOne({ where: { id: orderId, userId } });
-        if (!order) throw new NotFoundException('Order not found');
+    // 6. Cache idempotency key — best-effort, never block the response
+    this.redis
+      .set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL)
+      .catch((err) => {
+        this.logger.warn(
+          `Redis idempotency cache failed for ${dto.idempotency_key}: ${err.message}`,
+        );
+      });
 
-        // Idempotent — already cancelled
-        if (order.status === OrderStatus.CANCELLED) return order;
+        // 7. Clear only the ordered store cart now that the order is placed - best-effort
+    this.cartService
+      .clearByUserAndStoreId(userId, dto.store_id)
+      .catch((err) => {
+        this.logger.warn(
+          `Failed to clear cart for user ${userId} and store ${dto.store_id} after order: ${err.message}`,
+        );
+      });
 
-        if (!USER_CANCELLABLE_STATES.includes(order.status)) {
-            throw new BadRequestException(
-                `Cannot cancel — order is already ${order.status.toLowerCase()} and can no longer be cancelled.`,
-            );
-        }
+    return savedOrder;
+  }
 
-        const previousStatus = order.status;
-        order.status = OrderStatus.CANCELLED;
-        order.cancelledAt = new Date();
-        order.cancellationReason = dto.reason ?? 'Cancelled by user';
-        order.paymentStatus = PaymentStatus.REFUNDED;
+  async getOrdersByUser(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
+    const [data, total] = await this.orderRepository.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      relations: ['items'],
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { data, total, page, pages: Math.ceil(total / limit) };
+  }
 
-        const updated = await this.orderRepository.save(order);
-        await this.logTransition(order.id, previousStatus, OrderStatus.CANCELLED, OrderActor.USER, dto.reason ?? 'Cancelled by user');
+  async getOrderById(orderId: string, userId: string): Promise<Order> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, userId },
+      relations: ['items', 'statusLogs'],
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
+  }
 
-        this.logger.log(`Order ${order.orderNumber} cancelled by user ${userId}`);
-        // TODO: trigger refund via payment gateway (Phase 2)
-        return updated;
+  async getOrderInvoice(orderId: string, userId: string): Promise<Invoice> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.userId !== userId) throw new ForbiddenException('Access denied');
+
+    const invoice = await this.invoicesService.findByOrderNumber(
+      order.orderNumber,
+    );
+    if (!invoice) throw new NotFoundException('Invoice not ready yet');
+
+    return invoice;
+  }
+
+  async cancelOrder(
+    orderId: string,
+    userId: string,
+    dto: CancelOrderDto,
+  ): Promise<Order> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, userId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Idempotent — already cancelled
+    if (order.status === OrderStatus.CANCELLED) return order;
+
+    if (!USER_CANCELLABLE_STATES.includes(order.status)) {
+      throw new BadRequestException(
+        `Cannot cancel — order is already ${order.status.toLowerCase()} and can no longer be cancelled.`,
+      );
     }
 
-    // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
-    async fetchPendingOrders(storeId: string): Promise<Order[]> {
-        const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
+    const previousStatus = order.status;
+    order.status = OrderStatus.CANCELLED;
+    order.cancelledAt = new Date();
+    order.cancellationReason = dto.reason ?? 'Cancelled by user';
+    order.paymentStatus = PaymentStatus.REFUNDED;
 
-        const orders = await this.orderRepository.find({
-            where,
-            relations: ['items'],
-            order: { createdAt: 'ASC' },
-        });
+    const updated = await this.orderRepository.save(order);
+    await this.logTransition(
+      order.id,
+      previousStatus,
+      OrderStatus.CANCELLED,
+      OrderActor.USER,
+      dto.reason ?? 'Cancelled by user',
+    );
 
-        if (orders.length > 0) {
-            await this.orderRepository
-                .createQueryBuilder()
-                .update(Order)
-                .set({ erpFetchedAt: new Date() })
-                .whereInIds(orders.map((o) => o.id))
-                .execute();
-        }
+    this.logger.log(`Order ${order.orderNumber} cancelled by user ${userId}`);
+    // TODO: trigger refund via payment gateway (Phase 2)
+    return updated;
+  }
 
-        return orders;
+  // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
+  async fetchPendingOrders(storeId: string): Promise<Order[]> {
+    const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
+
+    const orders = await this.orderRepository.find({
+      where,
+      relations: ['items'],
+      order: { createdAt: 'ASC' },
+    });
+
+    if (orders.length > 0) {
+      await this.orderRepository
+        .createQueryBuilder()
+        .update(Order)
+        .set({ erpFetchedAt: new Date() })
+        .whereInIds(orders.map((o) => o.id))
+        .execute();
     }
 
-    async applyErpStatusUpdate(
-        orderNumber: string,
-        newStatus: string,
-        erpOrderId?: string,
-        invoiceUrl?: string,
-        invoiceNumber?: string,
-        notes?: string,
-    ): Promise<Order> {
-        const order = await this.orderRepository.findOne({ where: { orderNumber } });
-        if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
+    return orders;
+  }
 
-        const targetStatus = newStatus.toUpperCase() as OrderStatus;
+  async applyErpStatusUpdate(
+    orderNumber: string,
+    newStatus: string,
+    erpOrderId?: string,
+    invoiceUrl?: string,
+    invoiceNumber?: string,
+    notes?: string,
+  ): Promise<Order> {
+    const order = await this.orderRepository.findOne({
+      where: { orderNumber },
+    });
+    if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
 
-        // User cancelled while ERP was processing — ignore ERP update, keep cancelled
-        if (order.status === OrderStatus.CANCELLED) {
-            this.logger.warn(`Order ${orderNumber} already CANCELLED. Ignoring ERP update: ${targetStatus}`);
-            return order;
-        }
+    const targetStatus = newStatus.toUpperCase() as OrderStatus;
 
-        if (targetStatus === OrderStatus.CANCELLED) {
-            if (!ERP_CANCELLABLE_STATES.includes(order.status)) {
-                throw new BadRequestException(
-                    `ERP cannot cancel order in status: ${order.status}.`,
-                );
-            }
-        } else if (targetStatus !== OrderStatus.FAILED) {
-            const expectedNext = VALID_ERP_TRANSITIONS[order.status];
-            if (expectedNext !== targetStatus) {
-                throw new BadRequestException(
-                    `Invalid transition: ${order.status} → ${targetStatus}. Expected: ${expectedNext ?? 'none'}`,
-                );
-            }
-        }
-
-        const previousStatus = order.status;
-        order.status = targetStatus;
-
-        if (erpOrderId && !order.erpOrderId) order.erpOrderId = erpOrderId;
-        if (invoiceUrl) order.invoiceUrl = invoiceUrl;
-        if (invoiceNumber) order.invoiceNumber = invoiceNumber;
-
-        if (targetStatus === OrderStatus.CANCELLED) {
-            order.cancelledAt = new Date();
-            order.cancellationReason = notes ?? 'Cancelled by ERP';
-            order.paymentStatus = PaymentStatus.REFUNDED;
-        }
-
-        const updated = await this.orderRepository.save(order);
-        await this.logTransition(order.id, previousStatus, targetStatus, OrderActor.ERP, notes);
-
-        this.logger.log(`Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`);
-        // TODO: FCM push notification to user (Phase 2)
-        return updated;
+    // User cancelled while ERP was processing — ignore ERP update, keep cancelled
+    if (order.status === OrderStatus.CANCELLED) {
+      this.logger.warn(
+        `Order ${orderNumber} already CANCELLED. Ignoring ERP update: ${targetStatus}`,
+      );
+      return order;
     }
 
-    // ─── Private helpers ─────────────────────────────────────────────────────
-
-    private async generateOrderNumber(): Promise<string> {
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-        const prefix = `EJ-${dateStr}-`;
-
-        const lastOrder = await this.orderRepository
-            .createQueryBuilder('order')
-            .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
-            .orderBy('order.orderNumber', 'DESC')
-            .getOne();
-
-        let seq = 1;
-        if (lastOrder) {
-            const parts = lastOrder.orderNumber.split('-');
-            const lastSeq = parseInt(parts[parts.length - 1], 10);
-            if (!isNaN(lastSeq)) seq = lastSeq + 1;
-        }
-
-        return `${prefix}${seq.toString().padStart(4, '0')}`;
+    if (targetStatus === OrderStatus.CANCELLED) {
+      if (!ERP_CANCELLABLE_STATES.includes(order.status)) {
+        throw new BadRequestException(
+          `ERP cannot cancel order in status: ${order.status}.`,
+        );
+      }
+    } else if (targetStatus !== OrderStatus.FAILED) {
+      const expectedNext = VALID_ERP_TRANSITIONS[order.status];
+      if (expectedNext !== targetStatus) {
+        throw new BadRequestException(
+          `Invalid transition: ${order.status} → ${targetStatus}. Expected: ${expectedNext ?? 'none'}`,
+        );
+      }
     }
 
-    private async logTransition(
-        orderId: string,
-        fromStatus: OrderStatus | null,
-        toStatus: OrderStatus,
-        actor: OrderActor,
-        notes?: string,
-    ): Promise<void> {
-        const log = this.statusLogRepository.create({
-            order: { id: orderId } as Order,
-            fromStatus: fromStatus ?? null,
-            toStatus,
-            actor,
-            notes: notes ?? '',
-        });
-        await this.statusLogRepository.save(log);
+    const previousStatus = order.status;
+    order.status = targetStatus;
+
+    if (erpOrderId && !order.erpOrderId) order.erpOrderId = erpOrderId;
+    if (invoiceUrl) order.invoiceUrl = invoiceUrl;
+    if (invoiceNumber) order.invoiceNumber = invoiceNumber;
+
+    if (targetStatus === OrderStatus.CANCELLED) {
+      order.cancelledAt = new Date();
+      order.cancellationReason = notes ?? 'Cancelled by ERP';
+      order.paymentStatus = PaymentStatus.REFUNDED;
     }
+
+    const updated = await this.orderRepository.save(order);
+    await this.logTransition(
+      order.id,
+      previousStatus,
+      targetStatus,
+      OrderActor.ERP,
+      notes,
+    );
+
+    this.logger.log(
+      `Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
+    );
+    // TODO: FCM push notification to user (Phase 2)
+    return updated;
+  }
+
+  // ─── Private helpers ─────────────────────────────────────────────────────
+
+  private async generateOrderNumber(): Promise<string> {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `EJ-${dateStr}-`;
+
+    const lastOrder = await this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('order.orderNumber', 'DESC')
+      .getOne();
+
+    let seq = 1;
+    if (lastOrder) {
+      const parts = lastOrder.orderNumber.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) seq = lastSeq + 1;
+    }
+
+    return `${prefix}${seq.toString().padStart(4, '0')}`;
+  }
+
+  private async logTransition(
+    orderId: string,
+    fromStatus: OrderStatus | null,
+    toStatus: OrderStatus,
+    actor: OrderActor,
+    notes?: string,
+  ): Promise<void> {
+    const log = this.statusLogRepository.create({
+      order: { id: orderId } as Order,
+      fromStatus: fromStatus ?? null,
+      toStatus,
+      actor,
+      notes: notes ?? '',
+    });
+    await this.statusLogRepository.save(log);
+  }
 }
