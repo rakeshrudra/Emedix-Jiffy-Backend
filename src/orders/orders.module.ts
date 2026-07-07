@@ -7,14 +7,19 @@ import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatusLog } from './entities/order-status-log.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { Invoice } from '../invoices/entities/invoice.entity';
-import { Product } from '../products/entities/product.entity';
-import { Store } from '../stores/entities/store.entity';
+import { InvoicesModule } from '../invoices/invoices.module';
+import { ProductsModule } from '../products/products.module';
+import { StoresModule } from '../stores/stores.module';
+import { CartModule } from '../cart/cart.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, Invoice, Product, Store]),
+        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog]),
         JwtModule.register({}),
+        InvoicesModule,
+        ProductsModule,
+        StoresModule,
+        CartModule,
     ],
     controllers: [OrdersController],
     providers: [OrdersService, JwtAuthGuard],

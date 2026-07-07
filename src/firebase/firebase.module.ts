@@ -7,14 +7,14 @@ import * as admin from 'firebase-admin';
 export class FirebaseModule implements OnApplicationBootstrap {
   private readonly logger = new Logger(FirebaseModule.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   onApplicationBootstrap() {
-    if (admin.apps.length > 0) return; // already initialized
+    if (admin.apps.length > 0) return;
 
     const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
     const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
-    // .env stores \n as literal \\n — replace them back to real newlines
+
     const privateKey = this.configService
       .get<string>('FIREBASE_PRIVATE_KEY')
       ?.replace(/\\n/g, '\n');

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -62,9 +61,6 @@ export class StoresController {
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
   ) {
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new BadRequestException('Invalid coordinates');
-    }
     return this.storesService.findNearest(lat, lng);
   }
 
@@ -84,9 +80,6 @@ export class StoresController {
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
   ) {
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new BadRequestException('Invalid coordinates');
-    }
     return this.storesService.findReachable(lat, lng);
   }
 

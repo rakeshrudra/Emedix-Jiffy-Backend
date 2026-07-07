@@ -6,12 +6,13 @@ import { CartItem } from './entities/cart-item.entity';
 import { CartService } from './cart.service';
 import { CartController } from './cart.controller';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { Product } from '../products/entities/product.entity';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Cart, CartItem, Product]),
+    TypeOrmModule.forFeature([Cart, CartItem]),
     JwtModule.register({}),
+    ProductsModule,
   ],
   controllers: [CartController],
   providers: [CartService, JwtAuthGuard],

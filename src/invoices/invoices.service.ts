@@ -1,24 +1,35 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Invoice } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
 import { InvoiceDto } from './dto/invoice.dto';
-import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
 export class InvoicesService {
-    private readonly logger = new Logger(InvoicesService.name);
-
     constructor(
         @InjectRepository(Invoice)
         private readonly invoiceRepository: Repository<Invoice>,
         @InjectRepository(InvoiceItem)
         private readonly invoiceItemRepository: Repository<InvoiceItem>,
-        private readonly ordersService: OrdersService,
     ) { }
 
-    async handleInvoice(invoices: InvoiceDto[]): Promise<{ message: string }> {
+    /**
+     * Looked up by orderNo — used by OrdersService for the user-facing
+     * GET /orders/:id/invoice endpoint.
+     */
+    async findByOrderNumber(orderNo: string): Promise<Invoice | null> {
+        return this.invoiceRepository.findOne({
+            where: { orderNo },
+            relations: ['items'],
+        });
+    }
+
+    /**
+     * Upserts invoices + their line items from an ERP webhook payload.
+     * Keyed by (storeId, invoiceNo) for the invoice, (invoice, productCode) for items.
+     */
+    async upsertFromErp(invoices: InvoiceDto[]): Promise<void> {
         for (const inv of invoices) {
             let invoice = await this.invoiceRepository.findOne({
                 where: { storeId: inv.store_id, invoiceNo: inv.invoice_no },
@@ -74,28 +85,6 @@ export class InvoicesService {
                     }
                 }
             }
-
-            if (inv.order_no) {
-                try {
-                    await this.ordersService.applyErpStatusUpdate(
-                        inv.order_no,
-                        'CONFIRMED',
-                        undefined,
-                        undefined,
-                        inv.invoice_no,
-                    );
-                    this.logger.log(`Order ${inv.order_no} -> CONFIRMED via invoice ${inv.invoice_no}`);
-                } catch (err: unknown) {
-                    this.logger.warn(
-                        `Invoice ${inv.invoice_no}: could not update order ${inv.order_no}: ${(err as Error).message}`,
-                    );
-                }
-            }
         }
-
-        this.logger.log(`Upserted ${invoices.length} invoice(s)`);
-        return {
-            message: `Successfully processed invoices`,
-        };
     }
 }

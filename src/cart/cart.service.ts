@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
-import { Product } from '../products/entities/product.entity';
+import { ProductsService } from '../products/products.service';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 
@@ -21,8 +21,7 @@ export class CartService {
     private readonly cartRepo: Repository<Cart>,
     @InjectRepository(CartItem)
     private readonly itemRepo: Repository<CartItem>,
-    @InjectRepository(Product)
-    private readonly productRepo: Repository<Product>,
+    private readonly productsService: ProductsService,
   ) { }
 
   // ─── GET /api/cart ───────────────────────────────────────────────────────────
@@ -50,13 +49,10 @@ export class CartService {
   // ─── POST /api/cart/items ────────────────────────────────────────────────────
 
   async addItem(userId: string, dto: AddItemDto) {
-    const product = await this.productRepo.findOne({
-      where: { productCode: dto.product_code, storeId: dto.store_id },
-    });
+    const product = await this.productsService.findByCode(dto.store_id, dto.product_code);
 
     if (!product) throw new NotFoundException('Product not found in this store');
-    if (product.status !== 'Enable') throw new BadRequestException('Product is not available');
-    if (parseInt(product.productStock, 10) <= 0) throw new BadRequestException('Product is out of stock');
+    this.productsService.assertAvailable(product, product.productName, 1);
 
     let cart = await this.cartRepo.findOne({
       where: { userId },
@@ -80,14 +76,12 @@ export class CartService {
       existing.quantity += 1;
       await this.itemRepo.save(existing);
     } else {
-      const price = parseFloat(product.productPrice) || 0;
-      const discountPrice = parseFloat(product.productDiscountPrice) || 0;
       const item = this.itemRepo.create({
         cart,
         productCode: product.productCode,
         productName: product.productName,
-        productPrice: price,
-        productDiscountPrice: discountPrice,
+        productPrice: parseFloat(product.productPrice) || 0,
+        productDiscountPrice: parseFloat(product.productDiscountPrice) || 0,
         quantity: 1,
       });
       await this.itemRepo.save(item);
@@ -109,22 +103,8 @@ export class CartService {
     if (dto.quantity === 0) {
       await this.itemRepo.remove(item);
     } else {
-      const product = await this.productRepo.findOne({
-        where: { productCode, storeId: cart.storeId },
-      });
-
-      if (!product || product.status !== 'Enable') {
-        throw new BadRequestException('Product is no longer available');
-      }
-
-      const stock = parseInt(product.productStock, 10) || 0;
-      if (dto.quantity > stock) {
-        throw new BadRequestException(
-          stock === 0
-            ? 'Product is out of stock'
-            : `Only ${stock} unit(s) available`,
-        );
-      }
+      const product = await this.productsService.findByCode(cart.storeId, productCode);
+      this.productsService.assertAvailable(product, item.productName, dto.quantity);
 
       item.quantity = dto.quantity;
       await this.itemRepo.save(item);
@@ -174,9 +154,7 @@ export class CartService {
     const itemResults: any[] = [];
 
     for (const cartItem of cart.items) {
-      const product = await this.productRepo.findOne({
-        where: { productCode: cartItem.productCode, storeId: cart.storeId },
-      });
+      const product = await this.productsService.findByCode(cart.storeId, cartItem.productCode);
 
       const itemResult: any = {
         product_code: cartItem.productCode,
@@ -186,24 +164,16 @@ export class CartService {
         issues: [],
       };
 
-      if (!product || product.status !== 'Enable') {
-        itemResult.issues.push('Product is no longer available');
-        itemResult.available = false;
-      } else {
-        const stock = parseInt(product.productStock, 10) || 0;
-        const currentPrice = parseFloat(product.productDiscountPrice) || parseFloat(product.productPrice) || 0;
-        const cartPrice = Number(cartItem.productDiscountPrice) || Number(cartItem.productPrice);
+      const availabilityIssues = this.productsService.checkAvailability(product, cartItem.quantity);
+      itemResult.issues.push(...availabilityIssues);
+      itemResult.available = product?.status === 'Enable' && this.productsService.parseStock(product) > 0;
 
-        if (stock <= 0) {
-          itemResult.issues.push('Out of stock');
-          itemResult.available = false;
-        } else if (stock < cartItem.quantity) {
-          itemResult.issues.push(`Only ${stock} unit(s) available`);
-          itemResult.available = true;
-          itemResult.max_quantity = stock;
-        } else {
-          itemResult.available = true;
-        }
+      if (product && itemResult.available) {
+        const stock = this.productsService.parseStock(product);
+        if (cartItem.quantity > stock) itemResult.max_quantity = stock;
+
+        const currentPrice = this.productsService.getEffectivePrice(product);
+        const cartPrice = Number(cartItem.productDiscountPrice) || Number(cartItem.productPrice);
 
         if (Math.abs(currentPrice - cartPrice) > 0.01) {
           itemResult.issues.push(`Price changed from ₹${cartPrice} to ₹${currentPrice}`);

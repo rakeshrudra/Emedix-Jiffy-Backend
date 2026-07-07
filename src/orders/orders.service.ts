@@ -16,8 +16,10 @@ import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
-import { Product } from '../products/entities/product.entity';
-import { Store } from '../stores/entities/store.entity';
+import { InvoicesService } from '../invoices/invoices.service';
+import { ProductsService } from '../products/products.service';
+import { StoresService } from '../stores/stores.service';
+import { CartService } from '../cart/cart.service';
 
 const USER_CANCELLABLE_STATES = [OrderStatus.PENDING];
 const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
@@ -43,12 +45,10 @@ export class OrdersService {
         private readonly orderItemRepository: Repository<OrderItem>,
         @InjectRepository(OrderStatusLog)
         private readonly statusLogRepository: Repository<OrderStatusLog>,
-        @InjectRepository(Invoice)
-        private readonly invoiceRepository: Repository<Invoice>,
-        @InjectRepository(Product)
-        private readonly productRepository: Repository<Product>,
-        @InjectRepository(Store)
-        private readonly storeRepository: Repository<Store>,
+        private readonly invoicesService: InvoicesService,
+        private readonly productsService: ProductsService,
+        private readonly storesService: StoresService,
+        private readonly cartService: CartService,
         private readonly dataSource: DataSource,
         @Inject(REDIS_CLIENT)
         private readonly redis: Redis,
@@ -74,30 +74,14 @@ export class OrdersService {
         }
 
         // 3. Store must be active and open at order creation time
-        const store = await this.storeRepository.findOne({ where: { storeId: dto.store_id } });
-        if (!store || !store.isActive) {
-            throw new BadRequestException('This store is currently unavailable. Please try again later.');
-        }
-        if (!this.computeIsOpen(store.openingTime, store.closingTime)) {
-            throw new BadRequestException(`Store is closed. It opens at ${store.openingTime}.`);
-        }
+        await this.storesService.assertOrderable(dto.store_id);
 
         // 4. Re-validate stock for every item at order time
         const stockErrors: string[] = [];
         for (const item of dto.items) {
-            const product = await this.productRepository.findOne({
-                where: { productCode: item.product_code, storeId: dto.store_id },
-            });
-            if (!product || product.status !== 'Enable') {
-                stockErrors.push(`"${item.product_name}" is no longer available`);
-            } else {
-                const stock = parseInt(product.productStock, 10) || 0;
-                if (stock <= 0) {
-                    stockErrors.push(`"${item.product_name}" is out of stock`);
-                } else if (stock < item.qty) {
-                    stockErrors.push(`"${item.product_name}" only has ${stock} unit(s) available (requested ${item.qty})`);
-                }
-            }
+            const product = await this.productsService.findByCode(dto.store_id, item.product_code);
+            const issues = this.productsService.checkAvailability(product, item.qty);
+            stockErrors.push(...issues.map((issue) => `"${item.product_name}" ${issue.toLowerCase()}`));
         }
         if (stockErrors.length > 0) {
             throw new BadRequestException({ message: 'Some items are unavailable', errors: stockErrors });
@@ -170,9 +154,14 @@ export class OrdersService {
             await queryRunner.release();
         }
 
-        // 4. Cache idempotency key — best-effort, never block the response
+        // 6. Cache idempotency key — best-effort, never block the response
         this.redis.set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL).catch((err) => {
             this.logger.warn(`Redis idempotency cache failed for ${dto.idempotency_key}: ${err.message}`);
+        });
+
+        // 7. Clear the user's cart now that the order is placed — best-effort
+        this.cartService.clearByUserId(userId).catch((err) => {
+            this.logger.warn(`Failed to clear cart for user ${userId} after order: ${err.message}`);
         });
 
         return savedOrder;
@@ -207,10 +196,7 @@ export class OrdersService {
         if (!order) throw new NotFoundException('Order not found');
         if (order.userId !== userId) throw new ForbiddenException('Access denied');
 
-        const invoice = await this.invoiceRepository.findOne({
-            where: { orderNo: order.orderNumber },
-            relations: ['items'],
-        });
+        const invoice = await this.invoicesService.findByOrderNumber(order.orderNumber);
         if (!invoice) throw new NotFoundException('Invoice not ready yet');
 
         return invoice;
@@ -321,17 +307,6 @@ export class OrdersService {
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────
-
-    private computeIsOpen(openingTime: string | null, closingTime: string | null): boolean {
-        if (!openingTime || !closingTime) return true;
-        const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-        const [oh, om] = openingTime.split(':').map(Number);
-        const [ch, cm] = closingTime.split(':').map(Number);
-        const cur = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
-        const open = oh * 60 + om;
-        const close = ch * 60 + cm;
-        return close > open ? cur >= open && cur < close : cur >= open || cur < close;
-    }
 
     private async generateOrderNumber(): Promise<string> {
         const now = new Date();
