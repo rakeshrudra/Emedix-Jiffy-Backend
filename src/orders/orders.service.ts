@@ -12,14 +12,18 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { Order, OrderStatus, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ProductsService } from '../products/products.service';
+import { Product } from '../products/entities/product.entity';
 import { StoresService } from '../stores/stores.service';
 import { CartService } from '../cart/cart.service';
+import { AddressesService } from '../addresses/addresses.service';
+import { UsersService } from '../users/users.service';
 
 const USER_CANCELLABLE_STATES = [OrderStatus.PENDING];
 const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
@@ -45,14 +49,18 @@ export class OrdersService {
     private readonly orderItemRepository: Repository<OrderItem>,
     @InjectRepository(OrderStatusLog)
     private readonly statusLogRepository: Repository<OrderStatusLog>,
+    @InjectRepository(OrderDeliveryAddress)
+    private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
     private readonly invoicesService: InvoicesService,
     private readonly productsService: ProductsService,
     private readonly storesService: StoresService,
     private readonly cartService: CartService,
+    private readonly addressesService: AddressesService,
+    private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
-  ) {}
+  ) { }
 
   async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
@@ -76,37 +84,54 @@ export class OrdersService {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
       this.redis
         .set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL)
-        .catch(() => {});
+        .catch(() => { });
       return existing;
     }
 
     // 3. Store must be active and open at order creation time
     await this.storesService.assertOrderable(dto.store_id);
 
-    // 4. Re-validate stock for every item at order time
-    const stockErrors: string[] = [];
-    for (const item of dto.items) {
+    // 4. Delivery address must belong to the user
+    const address = await this.addressesService.findOwnedAddress(
+      userId,
+      dto.delivery_address_id,
+    );
+
+    // 5. Customer details come from the authenticated user's own record
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    // 6. Cart is the source of truth for items — must be non-empty
+    const cart = await this.cartService.getActiveCart(userId, dto.store_id);
+    if (!cart || cart.items.length === 0) {
+      throw new BadRequestException('Your cart is empty for this store.');
+    }
+
+    // 7. Fetch full product details per cart item — needed to populate
+    // order_items with catalog fields the cart doesn't carry (company,
+    // type, packaging, composition, HSN).
+    const productsByCode = new Map<string, Product>();
+    for (const cartItem of cart.items) {
       const product = await this.productsService.findByCode(
         dto.store_id,
-        item.product_code,
+        cartItem.productCode,
       );
-      const issues = this.productsService.checkAvailability(product, item.qty);
-      stockErrors.push(
-        ...issues.map(
-          (issue) => `"${item.product_name}" ${issue.toLowerCase()}`,
-        ),
-      );
+      if (product) productsByCode.set(cartItem.productCode, product);
     }
-    if (stockErrors.length > 0) {
-      throw new BadRequestException({
-        message: 'Some items are unavailable',
-        errors: stockErrors,
-      });
-    }
+
+    // 8. Compute totals server-side from cart item prices — never trust the client
+    const subtotal = cart.items.reduce((sum, item) => {
+      const effectivePrice =
+        Number(item.productDiscountPrice) || Number(item.productPrice);
+      return sum + effectivePrice * item.quantity;
+    }, 0);
+    const deliveryCharge = 0; // dummy for now — no delivery-fee logic yet
+    const discount = 0; // dummy for now — no coupon/discount logic yet
+    const totalAmount = subtotal + deliveryCharge - discount;
 
     const orderNumber = await this.generateOrderNumber();
 
-    // 5. Save order + items + initial status log in one transaction
+    // 9. Save order + delivery address snapshot + items + initial status log in one transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -114,21 +139,39 @@ export class OrdersService {
     let savedOrder: Order;
 
     try {
-      const items = dto.items.map((i) =>
-        this.orderItemRepository.create({
-          productCode: i.product_code,
-          productName: i.product_name,
-          productCompany: i.product_company ?? '',
-          productType: i.product_type ?? '',
-          packagingOfMedicines: i.packaging_of_medicines ?? '',
-          productComposition: i.product_composition ?? '',
-          qty: i.qty,
-          productPrice: i.unit_price,
-          productDiscountPrice: i.discount_price,
-          total: (parseFloat(i.discount_price) * i.qty).toFixed(2),
-          hsnCode: i.hsn_code ?? '',
-        }),
-      );
+      const items = cart.items.map((cartItem) => {
+        const price = Number(cartItem.productPrice);
+        const discountPrice = Number(cartItem.productDiscountPrice);
+        const product = productsByCode.get(cartItem.productCode);
+
+        return this.orderItemRepository.create({
+          productCode: cartItem.productCode,
+          productName: cartItem.productName,
+          productCompany: product?.productCompany ?? '',
+          productType: product?.productType ?? '',
+          packagingOfMedicines: product?.packagingOfMedicines ?? '',
+          productComposition: product?.productComposition ?? '',
+          hsnCode: product?.hsnCode ?? '',
+          qty: cartItem.quantity,
+          productPrice: price.toFixed(2),
+          productDiscountPrice: discountPrice.toFixed(2),
+          total: ((discountPrice || price) * cartItem.quantity).toFixed(2),
+        });
+      });
+
+      const deliveryAddress = this.orderDeliveryAddressRepository.create({
+        sourceAddressId: address.id,
+        label: address.label,
+        addressLine1: address.addressLine1,
+        addressLine2: address.addressLine2,
+        formattedAddress: address.formattedAddress,
+        city: address.city,
+        state: address.state,
+        pincode: address.pincode,
+        country: address.country,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      });
 
       const order = this.orderRepository.create({
         orderNumber,
@@ -137,15 +180,15 @@ export class OrdersService {
         status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.PAID,
         idempotencyKey: dto.idempotency_key,
-        subtotal: dto.subtotal,
-        deliveryCharge: dto.delivery_charge,
-        discount: dto.discount ?? 0,
-        totalAmount: dto.total_amount,
+        subtotal,
+        deliveryCharge,
+        discount,
+        totalAmount,
         paymentMethod: dto.payment_method,
         paymentGatewayRef: dto.payment_gateway_ref,
-        customerName: dto.customer_name,
-        customerPhone: dto.customer_phone,
-        deliveryAddress: JSON.stringify(dto.delivery_address),
+        customerName: user.name,
+        customerPhone: user.mobile_no,
+        deliveryAddress,
         prescriptionUrls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
           : '',
@@ -182,7 +225,7 @@ export class OrdersService {
         );
       });
 
-        // 7. Clear only the ordered store cart now that the order is placed - best-effort
+    // 7. Clear only the ordered store cart now that the order is placed - best-effort
     this.cartService
       .clearByUserAndStoreId(userId, dto.store_id)
       .catch((err) => {
