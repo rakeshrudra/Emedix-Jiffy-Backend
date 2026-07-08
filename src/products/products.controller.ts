@@ -2,6 +2,7 @@ import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { SearchProductsDto } from './dto/search-products.dto';
+import { ProductSearchQueryDto } from './dto/product-search-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('Products')
@@ -31,6 +32,22 @@ export class ProductsController {
         limit: result.limit,
         pages: Math.ceil(result.total / result.limit),
       },
+    };
+  }
+
+  /**
+   * GET /api/products/search?q=paracetamol&storeId=001
+   * Searches in-stock, enabled products by name, code, company, or composition.
+   */
+  @Get('search')
+  @ApiOperation({ summary: 'Search products' })
+  @ApiResponse({ status: 200, description: 'Product search results' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  async searchProducts(@Query() dto: ProductSearchQueryDto) {
+    const products = await this.productsService.searchProducts(dto);
+    return {
+      success: true,
+      data: products,
     };
   }
 
