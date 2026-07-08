@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
+import { ProductSearchQueryDto } from './dto/product-search-query.dto';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
 
@@ -52,6 +53,35 @@ export class ProductsService {
             throw new NotFoundException('Product not found');
         }
         return product;
+    }
+
+    async searchProducts(dto: ProductSearchQueryDto): Promise<Product[]> {
+        const searchText = dto.q?.trim();
+
+        if (!searchText) {
+            throw new BadRequestException('q is required');
+        }
+
+        const qb = this.productRepository
+            .createQueryBuilder('p')
+            .where('p.status = :status', { status: 'Enable' })
+            .andWhere('CAST(p.productStock AS UNSIGNED) > 0')
+            .andWhere(
+                `(
+                    LOWER(p.productName) LIKE :q OR
+                    LOWER(p.productCompany) LIKE :q OR
+                    LOWER(p.productComposition) LIKE :q
+                )`,
+                { q: `%${searchText.toLowerCase()}%` },
+            )
+            .orderBy('p.productName', 'ASC')
+            .take(20);
+
+        if (dto.storeId?.trim()) {
+            qb.andWhere('p.storeId = :storeId', { storeId: dto.storeId.trim() });
+        }
+
+        return qb.getMany();
     }
 
     /**
