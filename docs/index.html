@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<!-- Working of Products & Stock through ERP Sync
+1. Products are added by ERP software on every product add using POST /emedix-webhook/product - upsert products into mysql db.
+2. Product stock is updated by ERP software on every update on stock using POST /emedix-webhook/product-stock.
+
+Order Lifecycle -> a complete flow from order to delivery
+
+1. user authenticates, current location is automatically detected, nearest store to user location is assigned, products fetched from that specific store, browse products, add items to cart, change delivery address(optional), cart validation happens & proceeds to checkout.
+
+2. POST /orders - order is created & marked as PENDING in db.
+
+3. POST /emedix-webhook/orders/pending - ERP software fetches pending order based on store_id every 15mins, orders are automatically created in there system.
+
+4. store staff checks items availablity, collects products items, make invoice for specific order
+
+5. POST /emedix-webhook/invoice - ERP software sends invoice with all necessary charges, order is marked as CONFIRMED in db (user receives a notification).
+
+6. POST /delivery/assign - endpoint hit by store staff (not third party delivery) to assign delivery partner to specific order with delivery partner's details like name, phone_no, estimate delivery time in swagger UI, status updated to DISPATECHED/Out for Delivery, user receives a notification as order is Out for Delivery & will reach soon in given time period, order is trackable (communication between user & delivery partner)
+
+7. GET /api/delivery/:order_no/details - endpoint to get all information of order like user, delivery_address, product items details.
+
+8. POST /delivery/complete/:order_no - endpoint hit by delivery partner in swagger UI when order is delivered to user's delivery location, order marked as DELIVERED, payment is Cash On Delivery, invoice(bill) is sent to user by delivery partner, user receives a notification - order is delivered, customer support is provided. -->
+
+<head>
+    <meta charset="UTF-8">
+    <title>Emedix Jiffy — Order Lifecycle</title>
+    <style>
+        :root {
+            --ink: #0b2b33;
+            --ink-soft: #4c6b72;
+            --paper: #f5f9fa;
+            --card: #ffffff;
+            --line: #dbe6e8;
+            --brand: #05a9cb;
+            --brand-dark: #037e97;
+            --brand-pale: #e3f6fb;
+            --amber: #c7791a;
+            --amber-pale: #fdf2e2;
+            --green: #1f7a4d;
+            --green-pale: #e6f6ee;
+            --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            padding: 0 0 80px 0;
+        }
+
+        /* ── HEADER ───────────────────────────────────────── */
+
+        .masthead {
+            background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+            padding: 48px 32px 40px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .masthead::after {
+            content: "";
+            position: absolute;
+            right: -60px;
+            top: -60px;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .masthead::before {
+            content: "";
+            position: absolute;
+            right: 60px;
+            bottom: -100px;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .eyebrow {
+            font-size: 12px;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            opacity: .85;
+            font-weight: 600;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .masthead h1 {
+            margin: 0 0 10px;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            position: relative;
+            max-width: 640px;
+        }
+
+        .masthead p {
+            margin: 0;
+            font-size: 14.5px;
+            opacity: .92;
+            max-width: 560px;
+            line-height: 1.55;
+            position: relative;
+        }
+
+        .wrap {
+            max-width: 840px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ── SECTION LABELS ───────────────────────────────── */
+
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin: 44px 0 18px;
+        }
+
+        .section-head .tag {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--brand-dark);
+            background: var(--brand-pale);
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-weight: 600;
+            letter-spacing: .03em;
+        }
+
+        .section-head h2 {
+            font-size: 18px;
+            margin: 0;
+            font-weight: 700;
+        }
+
+        .section-sub {
+            font-size: 13.5px;
+            color: var(--ink-soft);
+            margin: -8px 0 20px;
+            line-height: 1.6;
+            max-width: 620px;
+        }
+
+        /* ── SYNC CARDS (products/stock) ──────────────────── */
+
+        .sync-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .sync-card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px 18px;
+        }
+
+        .sync-card .num {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--brand-dark);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .sync-card .endpoint {
+            font-family: var(--mono);
+            font-size: 12.5px;
+            background: var(--ink);
+            color: #d9f4fb;
+            padding: 5px 9px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+
+        .sync-card p {
+            margin: 0;
+            font-size: 13.5px;
+            color: var(--ink-soft);
+            line-height: 1.55;
+        }
+
+        /* ── TIMELINE ─────────────────────────────────────── */
+
+        .timeline {
+            position: relative;
+            margin-top: 8px;
+        }
+
+        .timeline::before {
+            content: "";
+            position: absolute;
+            left: 23px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--brand), var(--line) 90%);
+        }
+
+        .step {
+            position: relative;
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 0 18px;
+            margin-bottom: 6px;
+        }
+
+        .step-marker {
+            width: 48px;
+            display: flex;
+            justify-content: center;
+            padding-top: 14px;
+        }
+
+        .step-marker .dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--card);
+            border: 2.5px solid var(--brand);
+            color: var(--brand-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-weight: 700;
+            font-size: 13px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px 18px 17px;
+            margin-bottom: 16px;
+        }
+
+        .step-top {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 9px;
+        }
+
+        .actor-chip {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .02em;
+            padding: 3px 9px;
+            border-radius: 20px;
+            text-transform: uppercase;
+        }
+
+        .actor-user {
+            background: var(--brand-pale);
+            color: var(--brand-dark);
+        }
+
+        .actor-erp {
+            background: var(--amber-pale);
+            color: var(--amber);
+        }
+
+        .actor-staff {
+            background: var(--green-pale);
+            color: var(--green);
+        }
+
+        .endpoint-pill {
+            font-family: var(--mono);
+            font-size: 12px;
+            background: var(--ink);
+            color: #d9f4fb;
+            padding: 4px 10px;
+            border-radius: 6px;
+            word-break: break-all;
+        }
+
+        .status-arrow {
+            font-family: var(--mono);
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--brand-dark);
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .step-card p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.62;
+            color: var(--ink);
+        }
+
+        .step-card p b {
+            font-weight: 600;
+        }
+
+        /* ── FINAL STATE MARKER ───────────────────────────── */
+
+        .terminus {
+            position: relative;
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 0 18px;
+        }
+
+        .terminus-marker {
+            width: 48px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .terminus-marker .dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--green);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .terminus-card {
+            background: var(--green-pale);
+            border: 1px solid #bfe3cd;
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 13.5px;
+            color: #155c3a;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+
+        /* ── STATUS STRIP ─────────────────────────────────── */
+
+        .status-strip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 8px;
+        }
+
+        .status-pip {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 7px;
+            background: var(--brand-pale);
+            color: var(--brand-dark);
+        }
+
+        .status-pip.cancel {
+            background: #fbe9e7;
+            color: #a5401f;
+        }
+
+        .status-sep {
+            color: var(--ink-soft);
+            font-size: 13px;
+        }
+
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: var(--ink-soft);
+            margin-top: 56px;
+        }
+
+        @media(max-width:600px) {
+            .masthead {
+                padding: 36px 20px 32px;
+            }
+
+            .masthead h1 {
+                font-size: 24px;
+            }
+
+            .sync-row {
+                grid-template-columns: 1fr;
+            }
+
+            .status-arrow {
+                margin-left: 0;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="masthead">
+        <div class="eyebrow">Emedix Jiffy · Backend Reference</div>
+        <h1>Order Lifecycle — Pickup to Delivery</h1>
+        <p>End-to-end flow from ERP product sync through order placement, store confirmation, and store-staff delivery.
+            V1 — no payment gateway, no third-party courier.</p>
+    </div>
+
+    <div class="wrap">
+
+        <!-- PRODUCT SYNC -->
+        <div class="section-head">
+            <span class="tag">ERP SYNC</span>
+            <h2>Working of Products &amp; Stock through ERP Sync</h2>
+        </div>
+
+        <div class="sync-row">
+            <div class="sync-card">
+                <div class="num">01</div>
+                <div class="endpoint">POST /emedix-webhook/product</div>
+                <p>Products are added by ERP software on every product add — upsert products into MySQL DB.</p>
+            </div>
+            <div class="sync-card">
+                <div class="num">02</div>
+                <div class="endpoint">POST /emedix-webhook/product-stock</div>
+                <p>Product stock is updated by ERP software on every update on stock.</p>
+            </div>
+        </div>
+
+        <!-- ORDER LIFECYCLE -->
+        <div class="section-head">
+            <span class="tag">ORDER LIFECYCLE</span>
+            <h2>Complete Flow — Order to Delivery</h2>
+        </div>
+        <div class="section-sub">Eight steps, three actors — the user, Swil ERP, and store staff. Status moves strictly
+            forward: no skipping, no downgrading.</div>
+
+        <div class="timeline">
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">1</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-user">User</span>
+                    </div>
+                    <p>User authenticates, current location is automatically detected, nearest store to user location is
+                        assigned, products fetched from that specific store, browse products, add items to cart, change
+                        delivery address (optional), cart validation happens &amp; proceeds to checkout.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">2</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-user">User</span>
+                        <span class="endpoint-pill">POST /orders</span>
+                        <span class="status-arrow">→ PENDING</span>
+                    </div>
+                    <p>Order is created &amp; marked as <b>PENDING</b> in DB.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">3</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-erp">ERP</span>
+                        <span class="endpoint-pill">POST /emedix-webhook/orders/pending</span>
+                    </div>
+                    <p>ERP software fetches pending orders based on <b>store_id</b> every 15 minutes. Orders are
+                        automatically created in their system.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">4</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-staff">Store Staff</span>
+                    </div>
+                    <p>Store staff checks item availability, collects product items, makes invoice for the specific
+                        order manually in the ERP Software.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">5</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-erp">ERP</span>
+                        <span class="endpoint-pill">POST /emedix-webhook/invoice</span>
+                        <span class="status-arrow">→ CONFIRMED</span>
+                    </div>
+                    <p>ERP software sends invoice with all necessary charges. Order is marked as <b>CONFIRMED</b> in DB
+                        — user receives a notification.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">6</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-staff">Store Staff</span>
+                        <span class="endpoint-pill">POST /delivery/assign</span>
+                        <span class="status-arrow">→ DISPATCHED</span>
+                    </div>
+                    <p>Endpoint hit by store staff (not third-party delivery) to assign a delivery partner to the
+                        specific order — with delivery partner's details like name, phone number, estimated delivery
+                        time — via Swagger UI. Status updated to <b>DISPATCHED / Out for Delivery</b>. User receives a
+                        notification that the order is out for delivery and will reach soon in the given time period.
+                        Order is trackable — communication between user &amp; delivery partner.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">7</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-staff">Store Staff</span>
+                        <span class="endpoint-pill">GET /api/delivery/:order_no/details</span>
+                    </div>
+                    <p>Endpoint to get all information of the order — like user, delivery address, product items
+                        details.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">8</div>
+                </div>
+                <div class="step-card">
+                    <div class="step-top">
+                        <span class="actor-chip actor-staff">Store Staff</span>
+                        <span class="endpoint-pill">POST /delivery/complete/:order_no</span>
+                        <span class="status-arrow">→ DELIVERED</span>
+                    </div>
+                    <p>Endpoint hit by delivery partner in Swagger UI when the order is delivered to the user's delivery
+                        location. Order marked as <b>DELIVERED</b>. Payment is Cash on Delivery — invoice (bill) is sent
+                        to the user by the delivery partner. User receives a notification that the order is delivered.
+                        Customer support is provided.</p>
+                </div>
+            </div>
+
+            <div class="terminus">
+                <div class="terminus-marker">
+                    <div class="dot">✓</div>
+                </div>
+                <div class="terminus-card">Order complete — DELIVERED</div>
+            </div>
+
+        </div>
+
+        <!-- STATUS FLOW -->
+        <div class="section-head">
+            <span class="tag">STATE MACHINE</span>
+            <h2>Order Status — Strict Progression</h2>
+        </div>
+        <div class="status-strip">
+            <span class="status-pip">PENDING</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip">CONFIRMED</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip">DISPATCHED</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip">DELIVERED</span>
+            <span class="status-sep" style="margin-left:14px;">·</span>
+            <span class="status-pip cancel">CANCELLED</span>
+            <span class="status-sep" style="font-size:12px;">(user or store — PENDING/CONFIRMED only)</span>
+        </div>
+
+        <footer>Emedix Jiffy — Backend Reference · V1 · No payment gateway, no third-party courier</footer>
+
+    </div>
+
+</body>
+
+</html>
