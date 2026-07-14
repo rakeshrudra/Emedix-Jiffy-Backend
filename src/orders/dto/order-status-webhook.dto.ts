@@ -14,7 +14,7 @@ export class OrderStatusWebhookDto {
 
     @ApiProperty({
         example: 'CONFIRMED',
-        description: 'New order status: CONFIRMED | PACKED | DISPATCHED | DELIVERED | CANCELLED | FAILED',
+        description: 'New order status: CONFIRMED | PACKED | READY_FOR_PICKUP | DELIVERED | CANCELLED | FAILED',
     })
     @IsNotEmpty()
     @IsString()

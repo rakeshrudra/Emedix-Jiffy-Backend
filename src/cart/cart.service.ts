@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
+import { ProductStatus } from '../products/entities/product.entity';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { CartItem } from './entities/cart-item.entity';
@@ -80,8 +81,8 @@ export class CartService {
           cart,
           productCode: product.productCode,
           productName: product.productName,
-          productPrice: parseFloat(product.productPrice) || 0,
-          productDiscountPrice: parseFloat(product.productDiscountPrice) || 0,
+          productPrice: Number(product.productPrice) || 0,
+          productDiscountPrice: Number(product.productDiscountPrice) || 0,
           quantity: 1,
         }),
       );
@@ -174,7 +175,7 @@ export class CartService {
       );
       itemResult.issues.push(...availabilityIssues);
       itemResult.available =
-        product?.status === 'Enable' &&
+        product?.status === ProductStatus.ENABLE &&
         this.productsService.parseStock(product) > 0;
 
       if (product && itemResult.available) {

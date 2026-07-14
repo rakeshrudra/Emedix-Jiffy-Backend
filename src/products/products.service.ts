@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Product } from './entities/product.entity';
+import { Product, ProductStatus } from './entities/product.entity';
+import { ProductSwil } from './entities/product-swil.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
 import { ProductDto } from './dto/product.dto';
@@ -19,6 +20,10 @@ export class ProductsService {
     constructor(
         @InjectRepository(Product)
         private readonly productRepository: Repository<Product>,
+        // Legacy Swil ERP table — only touched by the ERP webhook write
+        // methods below. Product browsing/cart/orders never read this.
+        @InjectRepository(ProductSwil)
+        private readonly productSwilRepository: Repository<ProductSwil>,
     ) { }
 
     async listProducts(dto: SearchProductsDto): Promise<ProductListResult> {
@@ -29,8 +34,8 @@ export class ProductsService {
         const qb = this.productRepository
             .createQueryBuilder('p')
             .where('p.storeId = :storeId', { storeId: dto.store_id })
-            .andWhere('p.status = :status', { status: 'Enable' })
-            .andWhere('CAST(p.productStock AS UNSIGNED) > 0')
+            .andWhere('p.status = :status', { status: ProductStatus.ENABLE })
+            .andWhere('p.productStock > 0')
             .orderBy('p.productName', 'ASC')
             .skip(skip)
             .take(limit);
@@ -64,8 +69,8 @@ export class ProductsService {
 
         const qb = this.productRepository
             .createQueryBuilder('p')
-            .where('p.status = :status', { status: 'Enable' })
-            .andWhere('CAST(p.productStock AS UNSIGNED) > 0')
+            .where('p.status = :status', { status: ProductStatus.ENABLE })
+            .andWhere('p.productStock > 0')
             .andWhere(
                 `(
                     LOWER(p.productName) LIKE :q OR
@@ -93,11 +98,11 @@ export class ProductsService {
     }
 
     parseStock(product: Product): number {
-        return parseInt(product.productStock, 10) || 0;
+        return product.productStock ?? 0;
     }
 
     getEffectivePrice(product: Product): number {
-        return parseFloat(product.productDiscountPrice) || parseFloat(product.productPrice) || 0;
+        return product.productDiscountPrice || product.productPrice || 0;
     }
 
     /**
@@ -105,7 +110,7 @@ export class ProductsService {
      * Throws BadRequestException with a user-facing message on failure.
      */
     assertAvailable(product: Product | null, productName: string, requestedQty: number): void {
-        if (!product || product.status !== 'Enable') {
+        if (!product || product.status !== ProductStatus.ENABLE) {
             throw new BadRequestException(`"${productName}" is no longer available`);
         }
 
@@ -127,7 +132,7 @@ export class ProductsService {
     checkAvailability(product: Product | null, requestedQty: number): string[] {
         const issues: string[] = [];
 
-        if (!product || product.status !== 'Enable') {
+        if (!product || product.status !== ProductStatus.ENABLE) {
             issues.push('Product is no longer available');
             return issues;
         }
@@ -142,10 +147,10 @@ export class ProductsService {
         return issues;
     }
 
-    // ─── ERP webhook writes ─────────────────────────────────────────────────────
+    // ─── ERP webhook writes (Swil, legacy — products_swil table) ────────────────
 
     async upsertFromErp(items: ProductDto[]): Promise<void> {
-        await this.productRepository.upsert(
+        await this.productSwilRepository.upsert(
             items.map((item) => ({
                 storeId: item.store_id,
                 productName: item.product_name,
@@ -170,7 +175,7 @@ export class ProductsService {
     }
 
     async updateStockFromErp(items: ProductStockDto[]): Promise<void> {
-        await this.productRepository.upsert(
+        await this.productSwilRepository.upsert(
             items.map((item) => ({
                 productCode: item.product_code,
                 storeId: item.store_id,

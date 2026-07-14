@@ -9,14 +9,15 @@ import {
     Index,
 } from 'typeorm';
 
-export enum ProductStatus {
-    ENABLE = 'Enable',
-    DISABLE = 'Disable',
-}
-
-@Entity('products')
+/**
+ * Legacy Swil ERP product table (products_swil). Frozen schema from before
+ * the V1 ERP-cutover — kept alive only for the /emedix-webhook/* endpoints.
+ * Not read by product browsing, cart, or order creation; see Product for
+ * the live table those use.
+ */
+@Entity('products_swil')
 @Unique(['storeId', 'productCode'])
-export class Product {
+export class ProductSwil {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
     id: number;
@@ -35,7 +36,6 @@ export class Product {
     productCode: string;
 
     @ApiProperty({ example: 'Cipla Ltd' })
-    @Index('IDX_products_product_company')
     @Column()
     productCompany: string;
 
@@ -43,17 +43,17 @@ export class Product {
     @Column()
     hsnCode: string;
 
-    @ApiProperty({ example: false })
-    @Column({ type: 'boolean', default: false })
-    prescriptionRequired: boolean;
+    @ApiProperty({ example: 'no' })
+    @Column()
+    prescriptionRequired: string;
 
-    @ApiProperty({ example: 25.0 })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productPrice: number;
+    @ApiProperty({ example: '25.00' })
+    @Column()
+    productPrice: string;
 
-    @ApiProperty({ example: 22.0 })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productDiscountPrice: number;
+    @ApiProperty({ example: '22.00' })
+    @Column()
+    productDiscountPrice: string;
 
     @ApiProperty({ example: 'Tablet' })
     @Column()
@@ -64,17 +64,20 @@ export class Product {
     packagingOfMedicines: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg' })
-    @Index()
-    @Column()
+    @Column({ type: 'text' })
     productComposition: string;
 
-    @ApiProperty({ enum: ProductStatus, example: ProductStatus.ENABLE })
-    @Column({ type: 'enum', enum: ProductStatus, default: ProductStatus.ENABLE })
-    status: ProductStatus;
+    @ApiProperty({ example: 'Enable' })
+    @Column()
+    status: string;
 
-    @ApiProperty({ example: 250 })
-    @Column({ type: 'int', default: 0 })
-    productStock: number;
+    @ApiProperty({ example: '250' })
+    @Column()
+    productStock: string;
+
+    @ApiProperty({ example: '2026-02-27 10:30:00' })
+    @Column()
+    lastUpdated: string;
 
     @ApiProperty()
     @CreateDateColumn()

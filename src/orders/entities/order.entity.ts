@@ -17,7 +17,7 @@ import { OrderDeliveryAddress } from './order-delivery-address.entity';
 export enum OrderStatus {
     PENDING = 'PENDING',
     CONFIRMED = 'CONFIRMED',
-    DISPATCHED = 'DISPATCHED',
+    READY_FOR_PICKUP = 'READY_FOR_PICKUP',
     DELIVERED = 'DELIVERED',
     CANCELLED = 'CANCELLED',
     FAILED = 'FAILED',

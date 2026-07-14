@@ -33,7 +33,7 @@ const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
 };
 
-// Admin panel (Phase 2): CONFIRMED → DISPATCHED → DELIVERED
+// Admin panel (Phase 2): CONFIRMED → READY_FOR_PICKUP → DELIVERED
 
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 const IDEMPOTENCY_PREFIX = 'order:idem:';
