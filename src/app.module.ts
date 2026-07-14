@@ -15,6 +15,7 @@ import { RedisModule } from './redis/redis.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { StoresModule } from './stores/stores.module';
 import { CartModule } from './cart/cart.module';
+import { DeliveryModule } from './delivery/delivery.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -44,6 +45,7 @@ import databaseConfig from './database/database.config';
     InvoicesModule,
     StoresModule,
     CartModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

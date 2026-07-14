@@ -6,10 +6,12 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     OneToMany,
+    OneToOne,
     Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { OrderStatusLog } from './order-status-log.entity';
+import { OrderDelivery } from '../../delivery/entities/order-delivery.entity';
 
 export enum OrderStatus {
     PENDING = 'PENDING',
@@ -126,6 +128,9 @@ export class Order {
 
     @OneToMany(() => OrderStatusLog, (log) => log.order, { cascade: true })
     statusLogs: OrderStatusLog[];
+
+    @OneToOne(() => OrderDelivery, (orderDelivery) => orderDelivery.order)
+    delivery?: OrderDelivery | null;
 
     @ApiProperty()
     @CreateDateColumn()
