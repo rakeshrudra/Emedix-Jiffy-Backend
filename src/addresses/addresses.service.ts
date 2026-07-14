@@ -131,6 +131,15 @@ export class AddressesService {
     return { success: true, message: 'Address removed successfully' };
   }
 
+  /**
+   * Fetches a single address owned by the user, as a raw entity.
+   * Used by other services (e.g. OrdersService) that need the actual
+   * record — not the HTTP `{ success, data }` envelope.
+   */
+  async findOwnedAddress(userId: string, addressId: string): Promise<Address> {
+    return this.findOwned(userId, addressId);
+  }
+
   // ─── Private helpers ────────────────────────────────────────────────────────
 
   private async findOwned(userId: string, addressId: string): Promise<Address> {

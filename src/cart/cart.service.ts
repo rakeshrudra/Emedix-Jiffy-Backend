@@ -228,6 +228,14 @@ export class CartService {
     await this.removeCarts(cart ? [cart] : []);
   }
 
+  /**
+   * Raw cart entity for a user+store, for internal use by other services
+   * (e.g. OrdersService building order items from cart contents).
+   */
+  async getActiveCart(userId: string, storeId: string): Promise<Cart | null> {
+    return this.findCart(userId, storeId);
+  }
+
   private async findCart(
     userId: string,
     storeId: string,

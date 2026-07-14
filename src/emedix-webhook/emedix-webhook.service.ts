@@ -99,19 +99,25 @@ export class EmedixWebhookService {
 
     // ─── Private helpers ────────────────────────────────────────────────────────
     private formatOrderForErp(order: Order) {
-        let deliveryAddress: object;
-        try {
-            deliveryAddress = JSON.parse(order.deliveryAddress);
-        } catch {
-            deliveryAddress = { raw: order.deliveryAddress };
-        }
+        const address = order.deliveryAddress;
 
         return {
             order_no: order.orderNumber,
             store_id: order.storeId,
             customer_name: order.customerName,
             customer_phone: order.customerPhone,
-            delivery_address: deliveryAddress,
+            delivery_address: {
+                label: address.label,
+                address_line_1: address.addressLine1,
+                address_line_2: address.addressLine2,
+                formatted_address: address.formattedAddress,
+                city: address.city,
+                state: address.state,
+                pincode: address.pincode,
+                country: address.country,
+                latitude: address.latitude,
+                longitude: address.longitude,
+            },
             subtotal: order.subtotal,
             discount: order.discount,
             total_amount: order.totalAmount,
