@@ -321,7 +321,7 @@ export class OrdersService {
 
     const orders = await this.orderRepository.find({
       where,
-      relations: ['items'],
+      relations: ['items', 'deliveryAddress'],
       order: { createdAt: 'ASC' },
     });
 
