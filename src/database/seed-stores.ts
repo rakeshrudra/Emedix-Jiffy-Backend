@@ -5,7 +5,7 @@ import { AppDataSource } from './data-source';
 import { Store } from '../stores/entities/store.entity';
 
 type CsvStoreRow = {
-  erpStoreCode: string;
+  storeId: string;
   name: string;
   latitude: number;
   longitude: number;
@@ -132,9 +132,9 @@ function extractCity(address: string, state: string, pincode: string): string {
 
 function normalizeRows(rows: string[][]): CsvStoreRow[] {
   return rows.map((row, index) => {
-    const [erpStoreCode, name, latitudeValue, longitudeValue, formattedAddress, isActiveValue] = row;
+    const [storeId, name, latitudeValue, longitudeValue, formattedAddress, isActiveValue] = row;
 
-    if (!erpStoreCode || !name || !formattedAddress) {
+    if (!storeId || !name || !formattedAddress) {
       throw new Error(`Invalid Storeimport.csv row ${index + 1}: expected code, name, and formatted address.`);
     }
 
@@ -143,7 +143,7 @@ function normalizeRows(rows: string[][]): CsvStoreRow[] {
     const hadMissingCoordinates = latitude === null || longitude === null;
 
     return {
-      erpStoreCode,
+      storeId,
       name,
       latitude: latitude ?? DEFAULT_COORDINATE,
       longitude: longitude ?? DEFAULT_COORDINATE,
@@ -180,12 +180,12 @@ async function seedStores() {
     const state = extractState(row.formattedAddress);
     const city = extractCity(row.formattedAddress, state, pincode);
     const existing = await storeRepository.findOne({
-      where: { erpStoreCode: row.erpStoreCode },
+      where: { storeId: row.storeId },
     });
 
     const store = storeRepository.create({
       ...(existing ?? {}),
-      erpStoreCode: row.erpStoreCode,
+      storeId: row.storeId,
       name: row.name,
       addressLine1: row.formattedAddress.slice(0, 255),
       formattedAddress: row.formattedAddress,

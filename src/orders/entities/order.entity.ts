@@ -6,10 +6,12 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     OneToMany,
+    OneToOne,
     Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { OrderStatusLog } from './order-status-log.entity';
+import { OrderDeliveryAddress } from './order-delivery-address.entity';
 
 export enum OrderStatus {
     PENDING = 'PENDING',
@@ -44,7 +46,7 @@ export class Order {
     userId: string;
 
     @ApiProperty({ example: '001' })
-    @Column()
+    @Column({ name: 'store_id' })
     storeId: string;
 
     @ApiProperty({ enum: OrderStatus, example: OrderStatus.PENDING })
@@ -88,8 +90,11 @@ export class Order {
     @Column({ default: '' })
     paymentGatewayRef: string;
 
-    @Column({ type: 'text' })
-    deliveryAddress: string;
+    @OneToOne(() => OrderDeliveryAddress, (address) => address.order, {
+        cascade: true,
+        eager: true,
+    })
+    deliveryAddress: OrderDeliveryAddress;
 
     @ApiProperty({ example: 'Rahul Sharma' })
     @Column()

@@ -12,8 +12,8 @@ export class Store {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'erp_store_code', unique: true })
-  erpStoreCode: string;
+  @Column({ name: 'store_id', unique: true })
+  storeId: string;
 
   @Column()
   name: string;

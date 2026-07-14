@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmedixWebhookController } from './emedix-webhook.controller';
 import { EmedixWebhookService } from './emedix-webhook.service';
-import { Product } from '../products/entities/product.entity';
+import { InvoicesModule } from '../invoices/invoices.module';
+import { ProductsModule } from '../products/products.module';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Product]),
+        InvoicesModule,
+        ProductsModule,
         OrdersModule,
     ],
     controllers: [EmedixWebhookController],

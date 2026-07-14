@@ -3,6 +3,7 @@ import { ApiQuery, ApiTags, ApiOperation, ApiResponse, ApiBody, ApiHeader } from
 import { EmedixWebhookService } from './emedix-webhook.service';
 import { ProductDto } from '../products/dto/product.dto';
 import { ProductStockDto } from '../products/dto/product-stock.dto';
+import { InvoiceUploadDto } from '../invoices/dto/invoice.dto';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 
 @ApiTags('emedix-webhook')
@@ -42,5 +43,15 @@ export class EmedixWebhookController {
     @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
     getPendingOrders(@Query('store_id') storeId: string) {
         return this.webhookService.handlePendingOrders(storeId);
+    }
+
+    @Post('invoice')
+    @ApiOperation({ summary: 'Upload invoices from ERP' })
+    @ApiBody({ type: InvoiceUploadDto })
+    @ApiResponse({ status: 201, description: 'Invoices upserted successfully' })
+    @ApiResponse({ status: 400, description: 'Validation error' })
+    @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
+    handleInvoice(@Body() data: InvoiceUploadDto) {
+        return this.webhookService.handleInvoice(data.result);
     }
 }

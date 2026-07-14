@@ -18,7 +18,7 @@ export class Invoice {
     id: number;
 
     @ApiProperty({ example: '001' })
-    @Column()
+    @Column({ name: 'store_id' })
     storeId: string;
 
     @ApiProperty({ example: 'INV10045' })

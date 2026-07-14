@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -81,6 +82,8 @@ export class MapsService {
   constructor(private readonly configService: ConfigService) {}
 
   async reverseGeocode(latitude: number, longitude: number): Promise<GeocodeResult> {
+    this.assertValidCoordinates(latitude, longitude);
+
     const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
     try {
       const response = await axios.get<GoogleGeocodeResponse>(this.geocodingUrl, {
@@ -181,6 +184,12 @@ export class MapsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  private assertValidCoordinates(lat: number, lng: number): void {
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new BadRequestException('Invalid coordinates');
+    }
+  }
 
   private extractGeoFields(
     data: GoogleGeocodeResponse,

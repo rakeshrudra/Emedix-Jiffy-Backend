@@ -6,6 +6,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -17,11 +18,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { MapsService } from './maps.service';
 
 @ApiTags('Maps')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('api/maps')
 export class MapsController {
-  constructor(private readonly mapsService: MapsService) {}
+  constructor(private readonly mapsService: MapsService) { }
 
   /**
    * GET /api/maps/autocomplete?input=Rajpur Road
@@ -92,9 +93,6 @@ export class MapsController {
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
   ) {
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new BadRequestException('Invalid coordinates');
-    }
     const result = await this.mapsService.reverseGeocode(lat, lng);
     return { success: true, data: result };
   }

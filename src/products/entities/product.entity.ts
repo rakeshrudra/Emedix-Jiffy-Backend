@@ -17,7 +17,7 @@ export class Product {
     id: number;
 
     @ApiProperty({ example: '001' })
-    @Column()
+    @Column({ name: 'store_id' })
     storeId: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
@@ -30,6 +30,7 @@ export class Product {
     productCode: string;
 
     @ApiProperty({ example: 'Cipla Ltd' })
+    @Index('IDX_products_product_company')
     @Column()
     productCompany: string;
 
@@ -58,6 +59,7 @@ export class Product {
     packagingOfMedicines: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg' })
+    @Index('FTX_products_product_composition', { fulltext: true })
     @Column({ type: 'text' })
     productComposition: string;
 

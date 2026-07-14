@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -25,20 +26,20 @@ export class StoresService {
 
   /**
    * POST /api/stores
-   * Adds a new store. erp_store_code must be unique.
+   * Adds a new store. store_id must be unique.
    */
   async create(dto: CreateStoreDto) {
     const existing = await this.storeRepository.findOne({
-      where: { erpStoreCode: dto.erp_store_code },
+      where: { storeId: dto.store_id },
     });
     if (existing) {
       throw new ConflictException(
-        `Store with ERP code '${dto.erp_store_code}' already exists.`,
+        `Store with ERP code '${dto.store_id}' already exists.`,
       );
     }
 
     const store = this.storeRepository.create({
-      erpStoreCode: dto.erp_store_code,
+      storeId: dto.store_id,
       name: dto.name,
       addressLine1: dto.address_line_1,
       formattedAddress: dto.formatted_address,
@@ -57,7 +58,7 @@ export class StoresService {
     });
 
     const saved = await this.storeRepository.save(store);
-    this.logger.log(`Store created: ${saved.name} (${saved.erpStoreCode})`);
+    this.logger.log(`Store created: ${saved.name} (${saved.storeId})`);
 
     return { success: true, data: this.format(saved) };
   }
@@ -68,6 +69,7 @@ export class StoresService {
    * Uses the Haversine formula via a raw query for accurate distance.
    */
   async findNearest(lat: number, lng: number) {
+    this.assertValidCoordinates(lat, lng);
     const results = await this.haversineQuery(lat, lng, 1);
 
     if (results.length === 0) {
@@ -83,7 +85,7 @@ export class StoresService {
       success: true,
       data: {
         ...store,
-        is_open: this.computeIsOpen(store.opening_time, store.closing_time),
+        is_open: this.isStoreOpenAt(store.opening_time, store.closing_time),
       },
     };
   }
@@ -94,13 +96,14 @@ export class StoresService {
    * Ordered by distance (closest first).
    */
   async findReachable(lat: number, lng: number) {
+    this.assertValidCoordinates(lat, lng);
     const results = await this.haversineQuery(lat, lng);
 
     return {
       success: true,
       data: results.map((s) => ({
         ...s,
-        is_open: this.computeIsOpen(s.opening_time, s.closing_time),
+        is_open: this.isStoreOpenAt(s.opening_time, s.closing_time),
       })),
     };
   }
@@ -117,9 +120,39 @@ export class StoresService {
       success: true,
       data: {
         ...this.format(store),
-        is_open: this.computeIsOpen(store.openingTime, store.closingTime),
+        is_open: this.isStoreOpen(store),
       },
     };
+  }
+
+  /**
+   * Looks up a store by its ERP store_id and asserts it can currently accept
+   * orders (exists, active, within opening hours). Throws BadRequestException
+   * with a user-facing message otherwise. Single source of truth for this
+   * check — callers (e.g. OrdersService) should not re-derive it themselves.
+   */
+  async assertOrderable(storeId: string): Promise<Store> {
+    const store = await this.storeRepository.findOne({ where: { storeId } });
+
+    if (!store || !store.isActive) {
+      throw new BadRequestException('This store is currently unavailable. Please try again later.');
+    }
+
+    if (!this.isStoreOpen(store)) {
+      throw new BadRequestException(`Store is closed. It opens at ${store.openingTime}.`);
+    }
+
+    return store;
+  }
+
+  isStoreOpen(store: Store): boolean {
+    return this.isStoreOpenAt(store.openingTime, store.closingTime);
+  }
+
+  assertValidCoordinates(lat: number, lng: number): void {
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new BadRequestException('Invalid coordinates');
+    }
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
@@ -135,7 +168,7 @@ export class StoresService {
     const rows: any[] = await this.storeRepository.query(
       `
       SELECT
-        id, erp_store_code, name, address_line_1, formatted_address, place_id,
+        id, store_id, name, address_line_1, formatted_address, place_id,
         city, state, pincode, country,
         latitude, longitude, delivery_radius_km, phone,
         opening_time, closing_time, is_active,
@@ -157,7 +190,7 @@ export class StoresService {
 
     return rows.map((r) => ({
       id: r.id,
-      erp_store_code: r.erp_store_code,
+      store_id: r.store_id,
       name: r.name,
       address_line_1: r.address_line_1,
       formatted_address: r.formatted_address,
@@ -181,7 +214,7 @@ export class StoresService {
    * Determines if the store is currently open based on IST (UTC+5:30).
    * Returns true if opening_time and closing_time are not set (assumed always open).
    */
-  private computeIsOpen(openingTime: string | null, closingTime: string | null): boolean {
+  private isStoreOpenAt(openingTime: string | null, closingTime: string | null): boolean {
     if (!openingTime || !closingTime) return true;
 
     const now = new Date();
@@ -207,7 +240,7 @@ export class StoresService {
   private format(s: Store) {
     return {
       id: s.id,
-      erp_store_code: s.erpStoreCode,
+      store_id: s.storeId,
       name: s.name,
       address_line_1: s.addressLine1,
       formatted_address: s.formattedAddress,

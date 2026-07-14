@@ -23,8 +23,8 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 
 @ApiTags('Orders')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('api/orders')
 export class OrdersController {
     constructor(private readonly ordersService: OrdersService) { }

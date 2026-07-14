@@ -25,8 +25,8 @@ import { SaveAddressDto } from './dto/save-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
 
 @ApiTags('Addresses')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('api/address')
 export class AddressesController {
   constructor(private readonly addressesService: AddressesService) { }
