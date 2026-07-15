@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Request } from 'express';
-import { SafeAuthenticatedAdmin } from '../admin-auth.service';
-import { AdminJwtStrategy } from '../strategies/admin-jwt.strategy';
+import { SafeAuthenticatedAdmin } from '../../admin-auth/admin-auth.service';
+import { AdminJwtStrategy } from '../../admin-auth/strategies/admin-jwt.strategy';
 
 interface AdminRequest extends Request {
   user?: SafeAuthenticatedAdmin;

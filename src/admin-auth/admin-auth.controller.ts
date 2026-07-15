@@ -19,7 +19,7 @@ import { CurrentAdmin } from './decorators/current-admin.decorator';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminRefreshTokenDto } from './dto/admin-refresh-token.dto';
 import { AdminSignupDto } from './dto/admin-signup.dto';
-import { AdminJwtAuthGuard } from './guards/admin-jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 
 @ApiTags('Admin Auth')
 @Controller('api/admin/auth')

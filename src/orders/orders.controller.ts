@@ -19,6 +19,7 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
@@ -132,5 +133,22 @@ export class OrdersController {
             message: 'Order cancelled successfully',
             data: order,
         };
+    }
+}
+
+@ApiTags('Admin Orders')
+@Controller('api/admin/orders')
+export class AdminOrdersController {
+    constructor(private readonly ordersService: OrdersService) { }
+
+    @Get(':store_id')
+    @UseGuards(AdminJwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get pending orders for a store' })
+    @ApiParam({ name: 'store_id', example: '2', description: 'Store unique identifier' })
+    @ApiResponse({ status: 200, description: 'Admin order list returned' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    async getStoreOrders(@Param('store_id') storeId: string) {
+        return this.ordersService.getAdminOrdersByStore(storeId);
     }
 }

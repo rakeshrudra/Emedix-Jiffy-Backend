@@ -6,7 +6,7 @@ import { StoresModule } from '../stores/stores.module';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminAuthService } from './admin-auth.service';
 import { Admin } from './entities/admin.entity';
-import { AdminJwtAuthGuard } from './guards/admin-jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { AdminJwtStrategy } from './strategies/admin-jwt.strategy';
 
 @Module({
@@ -18,6 +18,6 @@ import { AdminJwtStrategy } from './strategies/admin-jwt.strategy';
   ],
   controllers: [AdminAuthController],
   providers: [AdminAuthService, AdminJwtStrategy, AdminJwtAuthGuard],
-  exports: [AdminAuthService],
+  exports: [AdminAuthService, AdminJwtStrategy, AdminJwtAuthGuard],
 })
 export class AdminAuthModule {}
