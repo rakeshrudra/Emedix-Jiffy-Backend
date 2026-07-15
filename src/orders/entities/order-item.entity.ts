@@ -38,24 +38,24 @@ export class OrderItem {
     packagingOfMedicines: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg' })
-    @Column({ type: 'text', default: '' })
+    @Column({ default: '' })
     productComposition: string;
 
     @ApiProperty({ example: 2 })
     @Column()
     qty: number;
 
-    @ApiProperty({ example: '25.00' })
-    @Column()
-    productPrice: string;
+    @ApiProperty({ example: 25.0 })
+    @Column({ type: 'decimal', precision: 10, scale: 2 })
+    productPrice: number;
 
-    @ApiProperty({ example: '22.00' })
-    @Column()
-    productDiscountPrice: string;
+    @ApiProperty({ example: 22.0 })
+    @Column({ type: 'decimal', precision: 10, scale: 2 })
+    productDiscountPrice: number;
 
-    @ApiProperty({ example: '44.00' })
-    @Column()
-    total: string;
+    @ApiProperty({ example: 44.0 })
+    @Column({ type: 'decimal', precision: 10, scale: 2 })
+    total: number;
 
     @ApiProperty({ example: '3004' })
     @Column({ default: '' })

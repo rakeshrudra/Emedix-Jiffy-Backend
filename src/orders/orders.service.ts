@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { Order, OrderStatus, PaymentStatus } from './entities/order.entity';
+import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
@@ -71,7 +71,7 @@ export class OrdersService {
         `Idempotency hit (Redis) for key: ${dto.idempotency_key}`,
       );
       return this.orderRepository.findOne({
-        where: { id: cachedOrderId },
+        where: { id: Number(cachedOrderId) },
         relations: ['items'],
       });
     }
@@ -97,7 +97,7 @@ export class OrdersService {
       dto.delivery_address_id,
     );
 
-    // 5. Customer details come from the authenticated user's own record
+    // 5. Customer must exist
     const user = await this.usersService.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
@@ -153,9 +153,9 @@ export class OrdersService {
           productComposition: product?.productComposition ?? '',
           hsnCode: product?.hsnCode ?? '',
           qty: cartItem.quantity,
-          productPrice: price.toFixed(2),
-          productDiscountPrice: discountPrice.toFixed(2),
-          total: ((discountPrice || price) * cartItem.quantity).toFixed(2),
+          productPrice: price,
+          productDiscountPrice: discountPrice,
+          total: (discountPrice || price) * cartItem.quantity,
         });
       });
 
@@ -178,16 +178,11 @@ export class OrdersService {
         userId,
         storeId: dto.store_id,
         status: OrderStatus.PENDING,
-        paymentStatus: PaymentStatus.PAID,
         idempotencyKey: dto.idempotency_key,
         subtotal,
         deliveryCharge,
         discount,
         totalAmount,
-        paymentMethod: dto.payment_method,
-        paymentGatewayRef: dto.payment_gateway_ref,
-        customerName: user.name,
-        customerPhone: user.mobile_no,
         deliveryAddress,
         prescriptionUrls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
@@ -252,7 +247,7 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(orderId: string, userId: string): Promise<Order> {
+  async getOrderById(orderId: number, userId: string): Promise<Order> {
     const order = await this.orderRepository.findOne({
       where: { id: orderId, userId },
       relations: ['items', 'statusLogs'],
@@ -261,7 +256,7 @@ export class OrdersService {
     return order;
   }
 
-  async getOrderInvoice(orderId: string, userId: string): Promise<Invoice> {
+  async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {
     const order = await this.orderRepository.findOne({
       where: { id: orderId },
     });
@@ -277,7 +272,7 @@ export class OrdersService {
   }
 
   async cancelOrder(
-    orderId: string,
+    orderId: number,
     userId: string,
     dto: CancelOrderDto,
   ): Promise<Order> {
@@ -299,7 +294,6 @@ export class OrdersService {
     order.status = OrderStatus.CANCELLED;
     order.cancelledAt = new Date();
     order.cancellationReason = dto.reason ?? 'Cancelled by user';
-    order.paymentStatus = PaymentStatus.REFUNDED;
 
     const updated = await this.orderRepository.save(order);
     await this.logTransition(
@@ -340,7 +334,6 @@ export class OrdersService {
   async applyErpStatusUpdate(
     orderNumber: string,
     newStatus: string,
-    erpOrderId?: string,
     invoiceUrl?: string,
     invoiceNumber?: string,
     notes?: string,
@@ -378,14 +371,12 @@ export class OrdersService {
     const previousStatus = order.status;
     order.status = targetStatus;
 
-    if (erpOrderId && !order.erpOrderId) order.erpOrderId = erpOrderId;
     if (invoiceUrl) order.invoiceUrl = invoiceUrl;
     if (invoiceNumber) order.invoiceNumber = invoiceNumber;
 
     if (targetStatus === OrderStatus.CANCELLED) {
       order.cancelledAt = new Date();
       order.cancellationReason = notes ?? 'Cancelled by ERP';
-      order.paymentStatus = PaymentStatus.REFUNDED;
     }
 
     const updated = await this.orderRepository.save(order);
@@ -428,7 +419,7 @@ export class OrdersService {
   }
 
   private async logTransition(
-    orderId: string,
+    orderId: number,
     fromStatus: OrderStatus | null,
     toStatus: OrderStatus,
     actor: OrderActor,

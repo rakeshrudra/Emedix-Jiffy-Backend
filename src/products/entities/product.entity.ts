@@ -73,7 +73,7 @@ export class Product {
     status: ProductStatus;
 
     @ApiProperty({ example: 250 })
-    @Column({ type: 'int', default: 0 })
+    @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
     productStock: number;
 
     @ApiProperty()

@@ -33,7 +33,7 @@ export class SplitProductsSwilAndLiveTable1784041291771 implements MigrationInte
         \`packagingOfMedicines\` varchar(255) NOT NULL,
         \`productComposition\` varchar(255) NOT NULL,
         \`status\` enum('Enable','Disable') NOT NULL DEFAULT 'Enable',
-        \`productStock\` int NOT NULL DEFAULT 0,
+        \`productStock\` decimal(10,2) NOT NULL DEFAULT 0,
         \`createdAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         \`updatedAt\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         UNIQUE INDEX \`IDX_products_store_id_product_code\` (\`store_id\`, \`productCode\`),

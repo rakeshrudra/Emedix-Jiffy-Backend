@@ -3,6 +3,7 @@ import {
     Controller,
     Get,
     Param,
+    ParseIntPipe,
     Patch,
     Post,
     Query,
@@ -79,10 +80,10 @@ export class OrdersController {
      */
     @Get(':id')
     @ApiOperation({ summary: 'Get a specific order by ID' })
-    @ApiParam({ name: 'id', description: 'Order UUID' })
+    @ApiParam({ name: 'id', description: 'Order ID' })
     @ApiResponse({ status: 200, description: 'Order detail returned' })
     @ApiResponse({ status: 404, description: 'Order not found' })
-    async getOrderById(@Request() req, @Param('id') id: string) {
+    async getOrderById(@Request() req, @Param('id', ParseIntPipe) id: number) {
         const order = await this.ordersService.getOrderById(id, req.user?.sub ?? (req.headers['x-user-id'] as string));
         return {
             success: true,
@@ -97,11 +98,11 @@ export class OrdersController {
      */
     @Get(':id/invoice')
     @ApiOperation({ summary: 'Get invoice for a specific order' })
-    @ApiParam({ name: 'id', description: 'Order UUID' })
+    @ApiParam({ name: 'id', description: 'Order ID' })
     @ApiResponse({ status: 200, description: 'Invoice returned' })
     @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user' })
     @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated' })
-    async getOrderInvoice(@Request() req, @Param('id') id: string) {
+    async getOrderInvoice(@Request() req, @Param('id', ParseIntPipe) id: number) {
         const invoice = await this.ordersService.getOrderInvoice(id, req.user?.sub ?? (req.headers['x-user-id'] as string));
         return {
             success: true,
@@ -116,13 +117,13 @@ export class OrdersController {
      */
     @Patch(':id/cancel')
     @ApiOperation({ summary: 'Cancel an order (only in PENDING state)' })
-    @ApiParam({ name: 'id', description: 'Order UUID' })
+    @ApiParam({ name: 'id', description: 'Order ID' })
     @ApiResponse({ status: 200, description: 'Order cancelled' })
     @ApiResponse({ status: 400, description: 'Cannot cancel in current state' })
     @ApiResponse({ status: 404, description: 'Order not found' })
     async cancelOrder(
         @Request() req,
-        @Param('id') id: string,
+        @Param('id', ParseIntPipe) id: number,
         @Body() dto: CancelOrderDto,
     ) {
         const order = await this.ordersService.cancelOrder(id, req.user?.sub ?? (req.headers['x-user-id'] as string), dto);

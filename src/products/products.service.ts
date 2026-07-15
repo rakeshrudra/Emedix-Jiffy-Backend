@@ -20,8 +20,6 @@ export class ProductsService {
     constructor(
         @InjectRepository(Product)
         private readonly productRepository: Repository<Product>,
-        // Legacy Swil ERP table — only touched by the ERP webhook write
-        // methods below. Product browsing/cart/orders never read this.
         @InjectRepository(ProductSwil)
         private readonly productSwilRepository: Repository<ProductSwil>,
     ) { }
@@ -98,11 +96,11 @@ export class ProductsService {
     }
 
     parseStock(product: Product): number {
-        return product.productStock ?? 0;
+        return Number(product.productStock) || 0;
     }
 
     getEffectivePrice(product: Product): number {
-        return product.productDiscountPrice || product.productPrice || 0;
+        return Number(product.productDiscountPrice) || Number(product.productPrice) || 0;
     }
 
     /**

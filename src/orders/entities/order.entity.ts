@@ -4,7 +4,6 @@ import {
     PrimaryGeneratedColumn,
     Column,
     CreateDateColumn,
-    UpdateDateColumn,
     OneToMany,
     OneToOne,
     Index,
@@ -23,40 +22,29 @@ export enum OrderStatus {
     FAILED = 'FAILED',
 }
 
-export enum PaymentStatus {
-    PENDING = 'PENDING',
-    PAID = 'PAID',
-    FAILED = 'FAILED',
-    REFUNDED = 'REFUNDED',
-}
-
 @Entity('orders')
 export class Order {
-    @ApiProperty({ example: 'uuid-v4' })
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+    @ApiProperty({ example: 1 })
+    @PrimaryGeneratedColumn()
+    id: number;
 
     @ApiProperty({ example: 'EJ-20260530-0001' })
     @Index({ unique: true })
     @Column()
     orderNumber: string;
 
+    @ApiProperty({ example: '001' })
+    @Column({ name: 'store_id' })
+    storeId: string;
+
     @ApiProperty({ example: 'uuid-of-user' })
     @Index()
     @Column()
     userId: string;
 
-    @ApiProperty({ example: '001' })
-    @Column({ name: 'store_id' })
-    storeId: string;
-
     @ApiProperty({ enum: OrderStatus, example: OrderStatus.PENDING })
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
     status: OrderStatus;
-
-    @ApiProperty({ example: 'SW-12345' })
-    @Column({ default: '' })
-    erpOrderId: string;
 
     // Client-generated UUID to prevent duplicate order creation on retry
     @Index({ unique: true })
@@ -79,31 +67,11 @@ export class Order {
     @Column({ type: 'decimal', precision: 10, scale: 2 })
     totalAmount: number;
 
-    @ApiProperty({ example: 'UPI' })
-    @Column()
-    paymentMethod: string;
-
-    @ApiProperty({ enum: PaymentStatus, example: PaymentStatus.PAID })
-    @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
-    paymentStatus: PaymentStatus;
-
-    @ApiProperty({ example: 'PAY123456' })
-    @Column({ default: '' })
-    paymentGatewayRef: string;
-
     @OneToOne(() => OrderDeliveryAddress, (address) => address.order, {
         cascade: true,
         eager: true,
     })
     deliveryAddress: OrderDeliveryAddress;
-
-    @ApiProperty({ example: 'Rahul Sharma' })
-    @Column()
-    customerName: string;
-
-    @ApiProperty({ example: '9876543210' })
-    @Column()
-    customerPhone: string;
 
     @Column({ type: 'text', default: '' })
     prescriptionUrls: string;
@@ -139,8 +107,4 @@ export class Order {
     @ApiProperty()
     @CreateDateColumn()
     createdAt: Date;
-
-    @ApiProperty()
-    @UpdateDateColumn()
-    updatedAt: Date;
 }
