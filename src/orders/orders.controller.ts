@@ -4,7 +4,6 @@ import {
     Get,
     Param,
     ParseIntPipe,
-    Patch,
     Post,
     Query,
     Request,
@@ -22,7 +21,6 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { CancelOrderDto } from './dto/cancel-order.dto';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -109,29 +107,6 @@ export class OrdersController {
             success: true,
             message: 'Invoice fetched successfully',
             data: invoice,
-        };
-    }
-
-    /**
-     * PATCH /api/orders/:id/cancel
-     * Cancels an order only in PENDING state.
-     */
-    @Patch(':id/cancel')
-    @ApiOperation({ summary: 'Cancel an order (only in PENDING state)' })
-    @ApiParam({ name: 'id', description: 'Order ID' })
-    @ApiResponse({ status: 200, description: 'Order cancelled' })
-    @ApiResponse({ status: 400, description: 'Cannot cancel in current state' })
-    @ApiResponse({ status: 404, description: 'Order not found' })
-    async cancelOrder(
-        @Request() req,
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: CancelOrderDto,
-    ) {
-        const order = await this.ordersService.cancelOrder(id, req.user?.sub ?? (req.headers['x-user-id'] as string), dto);
-        return {
-            success: true,
-            message: 'Order cancelled successfully',
-            data: order,
         };
     }
 }
