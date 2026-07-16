@@ -1,14 +1,13 @@
 import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Request,
-  UseGuards,
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseIntPipe,
+    Post,
+    Query,
+    Request,
+    UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -174,6 +173,24 @@ export class OrdersController {
       data: order,
     };
   }
+    /**
+     * GET /api/orders/:id/invoice
+     * Returns the invoice for a specific order.
+     */
+    @Get(':id/invoice')
+    @ApiOperation({ summary: 'Get invoice for a specific order' })
+    @ApiParam({ name: 'id', description: 'Order ID' })
+    @ApiResponse({ status: 200, description: 'Invoice returned' })
+    @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user' })
+    @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated' })
+    async getOrderInvoice(@Request() req, @Param('id', ParseIntPipe) id: number) {
+        const invoice = await this.ordersService.getOrderInvoice(id, req.user?.sub ?? (req.headers['x-user-id'] as string));
+        return {
+            success: true,
+            message: 'Invoice fetched successfully',
+            data: invoice,
+        };
+    }
 }
 
 @ApiTags('Admin Orders')

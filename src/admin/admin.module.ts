@@ -3,11 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StoresModule } from '../stores/stores.module';
-import { AdminAuthController } from './admin-auth.controller';
-import { AdminAuthService } from './admin-auth.service';
+import { AdminController } from './admin.controller';
+import { AdminService } from './admin.service';
 import { Admin } from './entities/admin.entity';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
-import { AdminJwtStrategy } from './strategies/admin-jwt.strategy';
 
 @Module({
   imports: [
@@ -16,8 +15,8 @@ import { AdminJwtStrategy } from './strategies/admin-jwt.strategy';
     TypeOrmModule.forFeature([Admin]),
     StoresModule,
   ],
-  controllers: [AdminAuthController],
-  providers: [AdminAuthService, AdminJwtStrategy, AdminJwtAuthGuard],
-  exports: [AdminAuthService, AdminJwtStrategy, AdminJwtAuthGuard],
+  controllers: [AdminController],
+  providers: [AdminService, AdminJwtAuthGuard],
+  exports: [AdminService, AdminJwtAuthGuard],
 })
-export class AdminAuthModule {}
+export class AdminModule {}

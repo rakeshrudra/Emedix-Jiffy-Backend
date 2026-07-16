@@ -27,21 +27,10 @@ import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { UsersService } from '../users/users.service';
 
-const USER_CANCELLABLE_STATES = [OrderStatus.PENDING];
-const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
-
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
 };
-
-const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
-  [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
-  [OrderStatus.CONFIRMED]: OrderStatus.READY_FOR_PICKUP,
-  [OrderStatus.READY_FOR_PICKUP]: OrderStatus.PICKED_UP,
-};
-
-// Admin panel (Phase 2): CONFIRMED → READY_FOR_PICKUP → DELIVERED
 
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 const IDEMPOTENCY_PREFIX = 'order:idem:';
@@ -513,44 +502,6 @@ export class OrdersService {
     return invoice;
   }
 
-  async cancelOrder(
-    orderId: number,
-    userId: string,
-    dto: CancelOrderDto,
-  ): Promise<Order> {
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId, userId },
-    });
-    if (!order) throw new NotFoundException('Order not found');
-
-    // Idempotent — already cancelled
-    if (order.status === OrderStatus.CANCELLED) return order;
-
-    if (!USER_CANCELLABLE_STATES.includes(order.status)) {
-      throw new BadRequestException(
-        `Cannot cancel — order is already ${order.status.toLowerCase()} and can no longer be cancelled.`,
-      );
-    }
-
-    const previousStatus = order.status;
-    order.status = OrderStatus.CANCELLED;
-    order.cancelledAt = new Date();
-    order.cancellationReason = dto.reason ?? 'Cancelled by user';
-
-    const updated = await this.orderRepository.save(order);
-    await this.logTransition(
-      order.id,
-      previousStatus,
-      OrderStatus.CANCELLED,
-      OrderActor.USER,
-      dto.reason ?? 'Cancelled by user',
-    );
-
-    this.logger.log(`Order ${order.orderNumber} cancelled by user ${userId}`);
-    // TODO: trigger refund via payment gateway (Phase 2)
-    return updated;
-  }
-
   // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
   async fetchPendingOrders(storeId: string): Promise<Order[]> {
     const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
@@ -587,7 +538,6 @@ export class OrdersService {
 
     const targetStatus = newStatus.toUpperCase() as OrderStatus;
 
-    // User cancelled while ERP was processing — ignore ERP update, keep cancelled
     if (order.status === OrderStatus.CANCELLED) {
       this.logger.warn(
         `Order ${orderNumber} already CANCELLED. Ignoring ERP update: ${targetStatus}`,
@@ -595,13 +545,7 @@ export class OrdersService {
       return order;
     }
 
-    if (targetStatus === OrderStatus.CANCELLED) {
-      if (!ERP_CANCELLABLE_STATES.includes(order.status)) {
-        throw new BadRequestException(
-          `ERP cannot cancel order in status: ${order.status}.`,
-        );
-      }
-    } else if (targetStatus !== OrderStatus.FAILED) {
+    if (targetStatus !== OrderStatus.FAILED) {
       const expectedNext = VALID_ERP_TRANSITIONS[order.status];
       if (expectedNext !== targetStatus) {
         throw new BadRequestException(
@@ -616,11 +560,6 @@ export class OrdersService {
     if (invoiceUrl) order.invoiceUrl = invoiceUrl;
     if (invoiceNumber) order.invoiceNumber = invoiceNumber;
 
-    if (targetStatus === OrderStatus.CANCELLED) {
-      order.cancelledAt = new Date();
-      order.cancellationReason = notes ?? 'Cancelled by ERP';
-    }
-
     const updated = await this.orderRepository.save(order);
     await this.logTransition(
       order.id,
@@ -633,7 +572,6 @@ export class OrdersService {
     this.logger.log(
       `Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
     );
-    // TODO: FCM push notification to user (Phase 2)
     return updated;
   }
 

@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -14,8 +15,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { AdminAuthService, SafeAuthenticatedAdmin } from './admin-auth.service';
-import { CurrentAdmin } from './decorators/current-admin.decorator';
+import { AdminService } from './admin.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminRefreshTokenDto } from './dto/admin-refresh-token.dto';
 import { AdminSignupDto } from './dto/admin-signup.dto';
@@ -23,8 +23,8 @@ import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 
 @ApiTags('Admin Auth')
 @Controller('api/admin/auth')
-export class AdminAuthController {
-  constructor(private readonly adminAuthService: AdminAuthService) {}
+export class AdminController {
+  constructor(private readonly adminService: AdminService) {}
 
   @Post('signup')
   @HttpCode(HttpStatus.CREATED)
@@ -62,7 +62,7 @@ export class AdminAuthController {
   @ApiResponse({ status: 403, description: 'Admin signup is disabled' })
   @ApiResponse({ status: 409, description: 'Username already exists' })
   signup(@Body() dto: AdminSignupDto) {
-    return this.adminAuthService.signup(dto);
+    return this.adminService.signup(dto);
   }
 
   @Post('login')
@@ -102,7 +102,7 @@ export class AdminAuthController {
   @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   login(@Body() dto: AdminLoginDto) {
-    return this.adminAuthService.login(dto.username, dto.password);
+    return this.adminService.login(dto.username, dto.password);
   }
 
   @Post('refresh')
@@ -134,7 +134,7 @@ export class AdminAuthController {
   @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   refresh(@Body() dto: AdminRefreshTokenDto) {
-    return this.adminAuthService.refresh(dto.refresh_token);
+    return this.adminService.refresh(dto.refresh_token);
   }
 
   @Get('me')
@@ -159,8 +159,8 @@ export class AdminAuthController {
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  me(@CurrentAdmin() admin: SafeAuthenticatedAdmin) {
-    return this.adminAuthService.getCurrentAdmin(admin.id);
+  me(@Request() req: any) {
+    return this.adminService.getCurrentAdmin(req.user?.sub);
   }
 
   @Post('logout')
@@ -180,6 +180,6 @@ export class AdminAuthController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   logout() {
-    return this.adminAuthService.logout();
+    return this.adminService.logout();
   }
 }

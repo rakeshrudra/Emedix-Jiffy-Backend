@@ -10,23 +10,23 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
-import { ADMIN_AUTH_DEFAULTS } from './constants/admin-auth.constants';
 import { AdminSignupDto } from './dto/admin-signup.dto';
 import { Admin } from './entities/admin.entity';
-import {
-  AdminAccessTokenPayload,
-  AdminRefreshTokenPayload,
-} from './interfaces/admin-jwt-payload.interface';
 
-export interface SafeAuthenticatedAdmin {
-  id: string;
+interface AdminAccessTokenPayload {
+  sub: string;
   username: string;
   store_id: string;
-  store_name: string;
+  token_type: 'admin_access';
+}
+
+interface AdminRefreshTokenPayload {
+  sub: string;
+  token_type: 'admin_refresh';
 }
 
 @Injectable()
-export class AdminAuthService {
+export class AdminService {
   constructor(
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
@@ -51,10 +51,7 @@ export class AdminAuthService {
     const store = await this.storesService.findStoreForAdminByStoreId(
       dto.store_id,
     );
-    const passwordHash = await bcrypt.hash(
-      dto.password,
-      ADMIN_AUTH_DEFAULTS.bcryptSaltRounds,
-    );
+    const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const admin = await this.adminRepository.save(
       this.adminRepository.create({
@@ -152,22 +149,6 @@ export class AdminAuthService {
     };
   }
 
-  async validateAdminAccessPayload(
-    payload: AdminAccessTokenPayload,
-  ): Promise<SafeAuthenticatedAdmin> {
-    const admin = await this.findExistingAdmin(payload.sub);
-    const store = await this.storesService.findStoreForAdminByStoreId(
-      admin.storeId,
-    );
-
-    return {
-      id: admin.id,
-      username: admin.username,
-      store_id: admin.storeId,
-      store_name: store.name,
-    };
-  }
-
   logout() {
     return {
       success: true,
@@ -199,31 +180,16 @@ export class AdminAuthService {
     return {
       access_token: this.jwtService.sign(accessPayload, {
         secret: this.configService.get<string>('ADMIN_JWT_ACCESS_SECRET'),
-        expiresIn: this.getExpiresIn(
-          'ADMIN_JWT_ACCESS_EXPIRES_IN',
-          ADMIN_AUTH_DEFAULTS.accessTokenExpiresIn,
-        ),
-      }),
+        expiresIn: this.configService.get<string>('ADMIN_JWT_ACCESS_EXPIRES_IN') ?? '15m',
+      } as JwtSignOptions),
       refresh_token: this.jwtService.sign(refreshPayload, {
         secret: this.configService.get<string>('ADMIN_JWT_REFRESH_SECRET'),
-        expiresIn: this.getExpiresIn(
-          'ADMIN_JWT_REFRESH_EXPIRES_IN',
-          ADMIN_AUTH_DEFAULTS.refreshTokenExpiresIn,
-        ),
-      }),
+        expiresIn: this.configService.get<string>('ADMIN_JWT_REFRESH_EXPIRES_IN') ?? '30d',
+      } as JwtSignOptions),
     };
   }
 
   private normalizeUsername(username: string): string {
     return username.trim().toLowerCase();
-  }
-
-  private getExpiresIn(
-    key: string,
-    fallback: string,
-  ): NonNullable<JwtSignOptions['expiresIn']> {
-    return (this.configService.get<string>(key) ?? fallback) as NonNullable<
-      JwtSignOptions['expiresIn']
-    >;
   }
 }

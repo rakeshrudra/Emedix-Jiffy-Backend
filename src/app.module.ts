@@ -16,7 +16,7 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { StoresModule } from './stores/stores.module';
 import { CartModule } from './cart/cart.module';
 import { DeliveryModule } from './delivery/delivery.module';
-import { AdminAuthModule } from './admin-auth/admin-auth.module';
+import { AdminModule } from './admin/admin.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -47,7 +47,7 @@ import databaseConfig from './database/database.config';
     StoresModule,
     CartModule,
     DeliveryModule,
-    AdminAuthModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
