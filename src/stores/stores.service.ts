@@ -125,6 +125,18 @@ export class StoresService {
     };
   }
 
+  async findStoreForAdminByStoreId(storeId: string): Promise<Store> {
+    const store = await this.storeRepository.findOne({
+      where: { storeId },
+    });
+
+    if (!store || !store.isActive) {
+      throw new BadRequestException('Store is invalid or inactive');
+    }
+
+    return store;
+  }
+
   /**
    * Looks up a store by its ERP store_id and asserts it can currently accept
    * orders (exists, active, within opening hours). Throws BadRequestException

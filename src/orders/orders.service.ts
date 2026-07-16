@@ -256,6 +256,40 @@ export class OrdersService {
     return order;
   }
 
+  async getAdminOrdersByStore(storeId: string) {
+    const orders = await this.orderRepository.find({
+      where: { storeId, status: OrderStatus.PENDING },
+      relations: ['items', 'deliveryAddress'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const formattedOrders = await Promise.all(
+      orders.map(async (order) => {
+        const user = await this.usersService.findById(order.userId);
+
+        return {
+          order_no: order.orderNumber,
+          store_id: order.storeId,
+          customer_name: user?.name ?? '',
+          customer_phone: user?.mobile_no ?? '',
+          delivery_address: this.formatAdminDeliveryAddress(
+            order.deliveryAddress,
+          ),
+          subtotal: this.formatMoney(order.subtotal),
+          discount: this.formatMoney(order.discount),
+          total_amount: this.formatMoney(order.totalAmount),
+          created_at: order.createdAt,
+          status: order.status,
+        };
+      }),
+    );
+
+    return {
+      count: formattedOrders.length,
+      orders: formattedOrders,
+    };
+  }
+
   async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {
     const order = await this.orderRepository.findOne({
       where: { id: orderId },
@@ -433,5 +467,24 @@ export class OrdersService {
       notes: notes ?? '',
     });
     await this.statusLogRepository.save(log);
+  }
+
+  private formatAdminDeliveryAddress(address: OrderDeliveryAddress) {
+    return {
+      label: address.label,
+      address_line_1: address.addressLine1,
+      address_line_2: address.addressLine2,
+      formatted_address: address.formattedAddress,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      country: address.country,
+      latitude: String(address.latitude),
+      longitude: String(address.longitude),
+    };
+  }
+
+  private formatMoney(value: number | string): string {
+    return Number(value).toFixed(2);
   }
 }
