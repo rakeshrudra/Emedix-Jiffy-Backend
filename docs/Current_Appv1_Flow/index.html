@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Emedix Jiffy — V1 App Flow</title>
+    <style>
+        :root {
+            --ink: #0b2b33;
+            --ink-soft: #4c6b72;
+            --paper: #f5f9fa;
+            --card: #ffffff;
+            --line: #dbe6e8;
+            --brand: #05a9cb;
+            --brand-dark: #037e97;
+            --brand-pale: #e3f6fb;
+            --amber: #c7791a;
+            --amber-pale: #fdf2e2;
+            --green: #1f7a4d;
+            --green-pale: #e6f6ee;
+            --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            padding: 0 0 80px 0;
+        }
+
+        .masthead {
+            background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+            padding: 48px 32px 40px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .masthead::after {
+            content: "";
+            position: absolute;
+            right: -60px;
+            top: -60px;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .masthead::before {
+            content: "";
+            position: absolute;
+            right: 60px;
+            bottom: -100px;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .eyebrow {
+            font-size: 12px;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            opacity: .85;
+            font-weight: 600;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .masthead h1 {
+            margin: 0 0 10px;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            position: relative;
+            max-width: 640px;
+        }
+
+        .masthead p {
+            margin: 0;
+            font-size: 14.5px;
+            opacity: .92;
+            max-width: 560px;
+            line-height: 1.55;
+            position: relative;
+        }
+
+        .wrap {
+            max-width: 840px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin: 44px 0 6px;
+        }
+
+        .section-head .tag {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--brand-dark);
+            background: var(--brand-pale);
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-weight: 600;
+            letter-spacing: .03em;
+        }
+
+        .section-head h2 {
+            font-size: 19px;
+            margin: 0;
+            font-weight: 700;
+        }
+
+        .section-sub {
+            font-size: 13.5px;
+            color: var(--ink-soft);
+            margin: 0 0 20px;
+            line-height: 1.6;
+            max-width: 620px;
+        }
+
+        /* ── TIMELINE (customer app) ─────────────────────── */
+
+        .timeline {
+            position: relative;
+            margin-top: 8px;
+        }
+
+        .timeline::before {
+            content: "";
+            position: absolute;
+            left: 23px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--brand), var(--line) 92%);
+        }
+
+        .step {
+            position: relative;
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 0 18px;
+        }
+
+        .step-marker {
+            width: 48px;
+            display: flex;
+            justify-content: center;
+            padding-top: 14px;
+        }
+
+        .step-marker .dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--card);
+            border: 2.5px solid var(--brand);
+            color: var(--brand-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-weight: 700;
+            font-size: 13px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px 18px 17px;
+            margin-bottom: 16px;
+        }
+
+        .step-card h3 {
+            margin: 0 0 8px;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .step-card ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .step-card li {
+            font-size: 13.5px;
+            line-height: 1.65;
+            color: var(--ink-soft);
+        }
+
+        .step-card li b {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        /* ── ADMIN CARDS (feature-based, not sequential) ──── */
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .admin-card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px 18px;
+        }
+
+        .admin-card .icon-row {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 9px;
+        }
+
+        .admin-card .icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--amber-pale);
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .admin-card h3 {
+            margin: 0;
+            font-size: 14.5px;
+            font-weight: 700;
+        }
+
+        .admin-card p {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--ink-soft);
+        }
+
+        /* ── STATUS STRIP ─────────────────────────────────── */
+
+        .status-strip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 8px;
+        }
+
+        .status-pip {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 7px;
+            background: var(--brand-pale);
+            color: var(--brand-dark);
+        }
+
+        .status-pip.final {
+            background: var(--green-pale);
+            color: var(--green);
+        }
+
+        .status-sep {
+            color: var(--ink-soft);
+            font-size: 13px;
+        }
+
+        .status-note {
+            font-size: 12.5px;
+            color: var(--ink-soft);
+            margin-top: 10px;
+        }
+
+        /* ── INFO STRIP (inventory note) ──────────────────── */
+
+        .info-strip {
+            background: var(--brand-pale);
+            border: 1px solid #bfe6ef;
+            border-radius: 10px;
+            padding: 13px 16px;
+            font-size: 13px;
+            color: var(--brand-dark);
+            line-height: 1.6;
+            margin-top: 8px;
+        }
+
+        /* ── TBD LIST ─────────────────────────────────────── */
+
+        .tbd-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .tbd-item {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-left: 3px solid var(--amber);
+            border-radius: 10px;
+            padding: 13px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .tbd-item span {
+            font-size: 13.5px;
+            font-weight: 600;
+        }
+
+        .tbd-badge {
+            font-family: var(--mono);
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--amber);
+            background: var(--amber-pale);
+            padding: 3px 9px;
+            border-radius: 20px;
+            letter-spacing: .03em;
+            flex-shrink: 0;
+        }
+
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: var(--ink-soft);
+            margin-top: 56px;
+        }
+
+        @media(max-width:600px) {
+            .masthead {
+                padding: 36px 20px 32px;
+            }
+
+            .masthead h1 {
+                font-size: 24px;
+            }
+
+            .admin-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="masthead">
+        <div class="eyebrow">Emedix Jiffy · V1</div>
+        <h1>Complete App Flow</h1>
+        <p>Customer app and admin panel, pickup-only model. No delivery, no ERP sync, no payment gateway in V1.</p>
+    </div>
+
+    <div class="wrap">
+
+        <!-- CUSTOMER APP -->
+        <div class="section-head">
+            <span class="tag">CUSTOMER APP</span>
+            <h2>User Journey</h2>
+        </div>
+        <div class="section-sub">From first open to picking up the order at the store.</div>
+
+        <div class="timeline">
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">1</div>
+                </div>
+                <div class="step-card">
+                    <h3>Onboarding</h3>
+                    <ul>
+                        <li>User opens the app → Firebase phone auth (OTP) → <b>JWT issued</b></li>
+                        <li>GPS auto-detects location → <b>nearest store assigned</b></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">2</div>
+                </div>
+                <div class="step-card">
+                    <h3>Browse</h3>
+                    <ul>
+                        <li>Products fetched from the store's product list (weekly CSV import by store staff)</li>
+                        <li>Stock shown with a disclaimer — <b>"Availability may vary, confirmed by store before
+                                pickup"</b></li>
+                        <li>User searches / browses → adds items to cart</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">3</div>
+                </div>
+                <div class="step-card">
+                    <h3>Cart</h3>
+                    <ul>
+                        <li>Add / update / remove items → stock capped, price snapshot taken</li>
+                        <li>User optionally changes delivery address</li>
+                        <li>Mismatch with store's delivery radius → alert shown, cart cleared, <b>new store assigned</b>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">4</div>
+                </div>
+                <div class="step-card">
+                    <h3>Checkout</h3>
+                    <ul>
+                        <li>Cart validated — stock, price &amp; store-open checks re-run</li>
+                        <li>All checks pass → order placed (idempotency key attached)</li>
+                        <li>Order created → status <b>PENDING</b>, cart marked <b>ORDERED</b></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">5</div>
+                </div>
+                <div class="step-card">
+                    <h3>Store Confirms <span style="font-weight:500;color:var(--ink-soft);font-size:12.5px;">— Admin
+                            Panel</span></h3>
+                    <ul>
+                        <li>Staff sees the <b>PENDING</b> order in real time</li>
+                        <li>Reviews items → checklist: available / unavailable per item</li>
+                        <li>Confirms → total adjusted automatically if some items are unavailable</li>
+                        <li>Status → <b>CONFIRMED</b>, user notified</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">6</div>
+                </div>
+                <div class="step-card">
+                    <h3>Store Prepares</h3>
+                    <ul>
+                        <li>Staff packs the available items</li>
+                        <li>Marks the order <b>"Ready for Pickup"</b></li>
+                        <li>Status → <b>READY_FOR_PICKUP</b>, user notified</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-marker">
+                    <div class="dot">7</div>
+                </div>
+                <div class="step-card">
+                    <h3>Pickup</h3>
+                    <ul>
+                        <li>User visits the store, collects the order</li>
+                        <li>Staff marks the order complete</li>
+                        <li>Status → <b>PICKED_UP</b>, user notified</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="info-strip">
+            Inventory is not ERP-synced in V1 — each store shares its product list via a weekly file import. Stock shown
+            in the app may not always reflect what's on the shelf right now.
+        </div>
+
+        <!-- ADMIN PANEL -->
+        <div class="section-head">
+            <span class="tag">ADMIN PANEL</span>
+            <h2>Store Staff Journey</h2>
+        </div>
+        <div class="section-sub">Where store staff manage incoming orders.</div>
+
+        <div class="admin-grid">
+            <div class="admin-card">
+                <div class="icon-row">
+                    <div class="icon">①</div>
+                    <h3>Admin Auth</h3>
+                </div>
+                <p>Store staff log in to their own panel.</p>
+            </div>
+
+            <div class="admin-card">
+                <div class="icon-row">
+                    <div class="icon">②</div>
+                    <h3>Store Info — Home</h3>
+                </div>
+                <p>Home screen shows the staff's store details at a glance.</p>
+            </div>
+
+            <div class="admin-card">
+                <div class="icon-row">
+                    <div class="icon">③</div>
+                    <h3>All Orders</h3>
+                </div>
+                <p>Every order for the store, across all statuses, in one place.</p>
+            </div>
+
+            <div class="admin-card">
+                <div class="icon-row">
+                    <div class="icon">④</div>
+                    <h3>Pending Checklist &amp; Confirm</h3>
+                </div>
+                <p>Staff checks item availability against a new order, then confirms it.</p>
+            </div>
+
+            <div class="admin-card" style="grid-column: span 2;">
+                <div class="icon-row">
+                    <div class="icon">⑤</div>
+                    <h3>Order Status Updates</h3>
+                </div>
+                <p>Staff move the order forward — Confirmed → Ready for Pickup → Picked Up — as it progresses.</p>
+            </div>
+        </div>
+
+        <!-- STATUS FLOW -->
+        <div class="section-head">
+            <span class="tag">STATE MACHINE</span>
+            <h2>Order Lifecycle</h2>
+        </div>
+
+        <div class="status-strip">
+            <span class="status-pip">PENDING</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip">CONFIRMED</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip">READY_FOR_PICKUP</span>
+            <span class="status-sep">→</span>
+            <span class="status-pip final">PICKED_UP</span>
+        </div>
+        <div class="status-note">Pickup only — no home delivery in V1. No cancellation yet.</div>
+
+        <!-- TO BE CONFIRMED -->
+        <div class="section-head">
+            <span class="tag">OPEN</span>
+            <h2>To Be Confirmed</h2>
+        </div>
+
+        <div class="tbd-list">
+            <div class="tbd-item">
+                <span>Order Cancellation</span>
+                <span class="tbd-badge">TBD</span>
+            </div>
+            <div class="tbd-item">
+                <span>App Push Notifications</span>
+                <span class="tbd-badge">TBD</span>
+            </div>
+            <div class="tbd-item">
+                <span>WhatsApp Notifications</span>
+                <span class="tbd-badge">TBD</span>
+            </div>
+            <div class="tbd-item">
+                <span>Order Schedule Feature</span>
+                <span class="tbd-badge">TBD</span>
+            </div>
+        </div>
+
+        <footer>Emedix Jiffy — V1 App Flow · Pickup only · No ERP sync · No payment gateway</footer>
+
+    </div>
+
+</body>
+
+</html>

@@ -15,7 +15,6 @@ import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { CancelOrderDto } from './dto/cancel-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
@@ -30,6 +29,13 @@ import { UsersService } from '../users/users.service';
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+};
+
+// Order pickup workflow: PENDING → CONFIRMED → READY_FOR_PICKUP → PICKED_UP
+const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
+  [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+  [OrderStatus.CONFIRMED]: OrderStatus.READY_FOR_PICKUP,
+  [OrderStatus.READY_FOR_PICKUP]: OrderStatus.PICKED_UP,
 };
 
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
@@ -57,7 +63,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
-  ) {}
+  ) { }
 
   async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
@@ -81,7 +87,7 @@ export class OrdersService {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
       this.redis
         .set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL)
-        .catch(() => {});
+        .catch(() => { });
       return existing;
     }
 
@@ -537,13 +543,6 @@ export class OrdersService {
     if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
 
     const targetStatus = newStatus.toUpperCase() as OrderStatus;
-
-    if (order.status === OrderStatus.CANCELLED) {
-      this.logger.warn(
-        `Order ${orderNumber} already CANCELLED. Ignoring ERP update: ${targetStatus}`,
-      );
-      return order;
-    }
 
     if (targetStatus !== OrderStatus.FAILED) {
       const expectedNext = VALID_ERP_TRANSITIONS[order.status];

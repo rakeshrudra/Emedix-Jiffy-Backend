@@ -1,13 +1,14 @@
 import {
-    Body,
-    Controller,
-    Get,
-    Param,
-    ParseIntPipe,
-    Post,
-    Query,
-    Request,
-    UseGuards,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -23,11 +24,8 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
-import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator';
-import { SafeAuthenticatedAdmin } from '../admin-auth/admin-auth.service';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { CancelOrderDto } from './dto/cancel-order.dto';
 import { AdminOrdersQueryDto } from './dto/admin-orders-query.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
@@ -38,7 +36,7 @@ import { OrderStatus } from './entities/order.entity';
 @UseGuards(JwtAuthGuard)
 @Controller('api/orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService) { }
 
   /**
    * POST /api/orders
@@ -127,14 +125,8 @@ export class OrdersController {
   @ApiOperation({ summary: 'Get invoice for a specific order' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   @ApiResponse({ status: 200, description: 'Invoice returned' })
-  @ApiResponse({
-    status: 403,
-    description: 'Access denied — order does not belong to user',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Order not found or invoice not yet generated',
-  })
+  @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user', })
+  @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated', })
   async getOrderInvoice(@Request() req, @Param('id', ParseIntPipe) id: number) {
     const invoice = await this.ordersService.getOrderInvoice(
       id,
@@ -147,50 +139,6 @@ export class OrdersController {
     };
   }
 
-  /**
-   * PATCH /api/orders/:id/cancel
-   * Cancels an order only in PENDING state.
-   */
-  @Patch(':id/cancel')
-  @ApiOperation({ summary: 'Cancel an order (only in PENDING state)' })
-  @ApiParam({ name: 'id', description: 'Order ID' })
-  @ApiResponse({ status: 200, description: 'Order cancelled' })
-  @ApiResponse({ status: 400, description: 'Cannot cancel in current state' })
-  @ApiResponse({ status: 404, description: 'Order not found' })
-  async cancelOrder(
-    @Request() req,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: CancelOrderDto,
-  ) {
-    const order = await this.ordersService.cancelOrder(
-      id,
-      req.user?.sub ?? (req.headers['x-user-id'] as string),
-      dto,
-    );
-    return {
-      success: true,
-      message: 'Order cancelled successfully',
-      data: order,
-    };
-  }
-    /**
-     * GET /api/orders/:id/invoice
-     * Returns the invoice for a specific order.
-     */
-    @Get(':id/invoice')
-    @ApiOperation({ summary: 'Get invoice for a specific order' })
-    @ApiParam({ name: 'id', description: 'Order ID' })
-    @ApiResponse({ status: 200, description: 'Invoice returned' })
-    @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user' })
-    @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated' })
-    async getOrderInvoice(@Request() req, @Param('id', ParseIntPipe) id: number) {
-        const invoice = await this.ordersService.getOrderInvoice(id, req.user?.sub ?? (req.headers['x-user-id'] as string));
-        return {
-            success: true,
-            message: 'Invoice fetched successfully',
-            data: invoice,
-        };
-    }
 }
 
 @ApiTags('Admin Orders')
@@ -198,8 +146,12 @@ export class OrdersController {
 @UseGuards(AdminJwtAuthGuard)
 @Controller('api/admin/orders')
 export class AdminOrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService) { }
 
+  /**
+   * GET /api/admin/orders
+   * Returns all orders for the authenticated admin store.
+   */
   @Get()
   @ApiOperation({
     summary: 'Get admin orders for the authenticated admin store',
@@ -216,12 +168,16 @@ export class AdminOrdersController {
   @ApiResponse({ status: 200, description: 'Admin order list returned' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getStoreOrders(
-    @CurrentAdmin() admin: SafeAuthenticatedAdmin,
+    @Request() req,
     @Query() query: AdminOrdersQueryDto,
   ) {
-    return this.ordersService.getAdminOrders(admin.store_id, query.status);
+    return this.ordersService.getAdminOrders(req.user?.store_id, query.status);
   }
 
+  /**
+   * GET /api/admin/orders/:orderId/items
+   * Returns checklist items for an order in the authenticated admin store.
+   */
   @Get(':orderId/items')
   @ApiOperation({
     summary: 'Get checklist items for an admin order',
@@ -229,49 +185,16 @@ export class AdminOrdersController {
       'Returns order items for the given order only when it belongs to the authenticated admin store.',
   })
   @ApiParam({ name: 'orderId', type: Number, example: 6 })
-  @ApiResponse({
-    status: 200,
-    description: 'Order items returned',
-    schema: {
-      example: {
-        success: true,
-        message: 'Order items fetched successfully',
-        data: {
-          order_id: 6,
-          order_no: 'EJ-20260716-0006',
-          status: 'PENDING',
-          items: [
-            {
-              id: 12,
-              product_code: 'MED10002',
-              product_name: 'Amoxicillin 250mg Capsule',
-              product_company: 'Sun Pharma',
-              product_type: 'Capsule',
-              packaging_of_medicines: '10 Capsules per Strip',
-              product_composition: 'Amoxicillin 250mg',
-              ordered_quantity: 3,
-              product_price: '75.00',
-              product_discount_price: '70.00',
-              total: '210.00',
-              hsn_code: '3004',
-              isAvailable: false,
-              confirmedQuantity: 0,
-              created_at: '2026-07-16T10:00:00.000Z',
-            },
-          ],
-        },
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: 'Order items returned' })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
   async getOrderItems(
     @Param('orderId', ParseIntPipe) orderId: number,
-    @CurrentAdmin() admin: SafeAuthenticatedAdmin,
+    @Request() req,
   ) {
     const data = await this.ordersService.getAdminOrderItems(
       orderId,
-      admin.store_id,
+      req.user?.store_id,
     );
 
     return {
@@ -281,6 +204,10 @@ export class AdminOrdersController {
     };
   }
 
+  /**
+   * PATCH /api/admin/orders/:orderId/items
+   * Updates the full item availability checklist for a pending order.
+   */
   @Patch(':orderId/items')
   @ApiOperation({
     summary: 'Update the full item availability checklist for a pending order',
@@ -289,27 +216,7 @@ export class AdminOrdersController {
   })
   @ApiParam({ name: 'orderId', type: Number, example: 1 })
   @ApiBody({ type: UpdateAdminOrderItemsDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Order items updated successfully',
-    schema: {
-      example: {
-        success: true,
-        message: 'Order items updated successfully',
-        data: {
-          order_id: 1,
-          items: [
-            {
-              id: 1,
-              ordered_quantity: 3,
-              isAvailable: true,
-              confirmedQuantity: 3,
-            },
-          ],
-        },
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: 'Order items updated successfully' })
   @ApiBadRequestResponse({
     description: 'Validation failed or order is not editable',
   })
@@ -318,11 +225,11 @@ export class AdminOrdersController {
   async updateItems(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: UpdateAdminOrderItemsDto,
-    @CurrentAdmin() admin: SafeAuthenticatedAdmin,
+    @Request() req,
   ) {
     const data = await this.ordersService.updateAdminOrderItems(
       orderId,
-      admin.store_id,
+      req.user?.store_id,
       dto,
     );
 
@@ -333,6 +240,10 @@ export class AdminOrdersController {
     };
   }
 
+  /**
+   * PATCH /api/admin/orders/:orderId/status
+   * Updates order status through the Phase 1 pickup workflow.
+   */
   @Patch(':orderId/status')
   @ApiOperation({
     summary: 'Update order status through the Phase 1 pickup workflow',
@@ -340,24 +251,7 @@ export class AdminOrdersController {
   })
   @ApiParam({ name: 'orderId', type: Number, example: 1 })
   @ApiBody({ type: UpdateAdminOrderStatusDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Order status updated successfully',
-    schema: {
-      example: {
-        success: true,
-        message: 'Order status updated successfully',
-        data: {
-          order: {
-            id: 1,
-            order_no: 'EJ-20260715-0001',
-            previous_status: 'PENDING',
-            status: 'CONFIRMED',
-          },
-        },
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: 'Order status updated successfully' })
   @ApiBadRequestResponse({
     description: 'Invalid transition or incomplete checklist',
   })
@@ -366,13 +260,13 @@ export class AdminOrdersController {
   async updateStatus(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: UpdateAdminOrderStatusDto,
-    @CurrentAdmin() admin: SafeAuthenticatedAdmin,
+    @Request() req,
   ) {
     const data = await this.ordersService.updateAdminOrderStatus(
       orderId,
-      admin.store_id,
+      req.user?.store_id,
       dto,
-      admin.id,
+      req.user?.sub,
     );
 
     return {
