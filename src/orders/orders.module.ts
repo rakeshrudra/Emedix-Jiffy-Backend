@@ -32,4 +32,4 @@ import { AdminModule } from '../admin/admin.module';
     providers: [OrdersService, JwtAuthGuard],
     exports: [OrdersService],
 })
-export class OrdersModule { }
+export class OrdersModule {}
