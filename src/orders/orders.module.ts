@@ -17,19 +17,24 @@ import { UsersModule } from '../users/users.module';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([Order, OrderItem, OrderStatusLog, OrderDeliveryAddress]),
-        JwtModule.register({}),
-        InvoicesModule,
-        ProductsModule,
-        StoresModule,
-        CartModule,
-        AddressesModule,
-        UsersModule,
-        AdminAuthModule,
-    ],
-    controllers: [OrdersController, AdminOrdersController],
-    providers: [OrdersService, JwtAuthGuard],
-    exports: [OrdersService],
+  imports: [
+    TypeOrmModule.forFeature([
+      Order,
+      OrderItem,
+      OrderStatusLog,
+      OrderDeliveryAddress,
+    ]),
+    JwtModule.register({}),
+    InvoicesModule,
+    ProductsModule,
+    StoresModule,
+    CartModule,
+    AddressesModule,
+    UsersModule,
+    AdminAuthModule,
+  ],
+  controllers: [OrdersController, AdminOrdersController],
+  providers: [OrdersService, JwtAuthGuard],
+  exports: [OrdersService],
 })
-export class OrdersModule { }
+export class OrdersModule {}

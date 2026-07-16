@@ -16,6 +16,8 @@ import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
+import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ProductsService } from '../products/products.service';
@@ -31,6 +33,12 @@ const ERP_CANCELLABLE_STATES = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+};
+
+const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
+  [OrderStatus.PENDING]: OrderStatus.CONFIRMED,
+  [OrderStatus.CONFIRMED]: OrderStatus.READY_FOR_PICKUP,
+  [OrderStatus.READY_FOR_PICKUP]: OrderStatus.PICKED_UP,
 };
 
 // Admin panel (Phase 2): CONFIRMED → READY_FOR_PICKUP → DELIVERED
@@ -60,7 +68,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
-  ) { }
+  ) {}
 
   async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
@@ -84,7 +92,7 @@ export class OrdersService {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
       this.redis
         .set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL)
-        .catch(() => { });
+        .catch(() => {});
       return existing;
     }
 
@@ -215,8 +223,9 @@ export class OrdersService {
     this.redis
       .set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL)
       .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Redis idempotency cache failed for ${dto.idempotency_key}: ${err.message}`,
+          `Redis idempotency cache failed for ${dto.idempotency_key}: ${message}`,
         );
       });
 
@@ -224,8 +233,9 @@ export class OrdersService {
     this.cartService
       .clearByUserAndStoreId(userId, dto.store_id)
       .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to clear cart for user ${userId} and store ${dto.store_id} after order: ${err.message}`,
+          `Failed to clear cart for user ${userId} and store ${dto.store_id} after order: ${message}`,
         );
       });
 
@@ -256,10 +266,13 @@ export class OrdersService {
     return order;
   }
 
-  async getAdminOrdersByStore(storeId: string) {
+  async getAdminOrders(storeId: string, status?: OrderStatus) {
+    const where: Partial<Order> = { storeId };
+    if (status) where.status = status;
+
     const orders = await this.orderRepository.find({
-      where: { storeId, status: OrderStatus.PENDING },
-      relations: ['items', 'deliveryAddress'],
+      where,
+      relations: ['deliveryAddress'],
       order: { createdAt: 'DESC' },
     });
 
@@ -268,6 +281,7 @@ export class OrdersService {
         const user = await this.usersService.findById(order.userId);
 
         return {
+          order_id: order.id,
           order_no: order.orderNumber,
           store_id: order.storeId,
           customer_name: user?.name ?? '',
@@ -287,6 +301,200 @@ export class OrdersService {
     return {
       count: formattedOrders.length,
       orders: formattedOrders,
+    };
+  }
+
+  async getAdminOrderItems(orderId: number, storeId: string) {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, storeId },
+      relations: ['items'],
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    const items = [...order.items].sort((a, b) => a.id - b.id);
+
+    return {
+      order_id: order.id,
+      order_no: order.orderNumber,
+      status: order.status,
+      items: items.map((item) => ({
+        id: item.id,
+        product_code: item.productCode,
+        product_name: item.productName,
+        product_company: item.productCompany,
+        product_type: item.productType,
+        packaging_of_medicines: item.packagingOfMedicines,
+        product_composition: item.productComposition,
+        ordered_quantity: item.qty,
+        product_price: item.productPrice,
+        product_discount_price: item.productDiscountPrice,
+        total: item.total,
+        hsn_code: item.hsnCode,
+        isAvailable: item.isAvailable,
+        confirmedQuantity: item.confirmedQuantity,
+        created_at: item.createdAt,
+      })),
+    };
+  }
+
+  async updateAdminOrderItems(
+    orderId: number,
+    storeId: string,
+    dto: UpdateAdminOrderItemsDto,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id: orderId, storeId },
+        relations: ['items'],
+      });
+
+      if (!order) throw new NotFoundException('Order not found');
+
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          `Order items can only be edited while the order is ${OrderStatus.PENDING}.`,
+        );
+      }
+
+      const submittedById = new Map(
+        dto.items.map((item) => [item.order_item_id, item]),
+      );
+      const orderItemIds = order.items.map((item) => item.id);
+
+      if (submittedById.size !== order.items.length) {
+        throw new BadRequestException(
+          'The request must include every item in the order.',
+        );
+      }
+
+      for (const itemId of orderItemIds) {
+        if (!submittedById.has(itemId)) {
+          throw new BadRequestException(
+            'The request must include every item in the order.',
+          );
+        }
+      }
+
+      for (const submittedId of submittedById.keys()) {
+        if (!orderItemIds.includes(submittedId)) {
+          throw new BadRequestException(
+            'Every submitted order_item_id must belong to the order.',
+          );
+        }
+      }
+
+      for (const item of order.items) {
+        const submitted = submittedById.get(item.id);
+        const orderedQuantity = Number(item.qty);
+
+        if (submitted.confirmedQuantity > orderedQuantity) {
+          throw new BadRequestException(
+            `confirmedQuantity cannot exceed ordered quantity for order item ${item.id}.`,
+          );
+        }
+
+        if (!submitted.isAvailable && submitted.confirmedQuantity !== 0) {
+          throw new BadRequestException(
+            `confirmedQuantity must be 0 when order item ${item.id} is unavailable.`,
+          );
+        }
+
+        if (submitted.isAvailable && submitted.confirmedQuantity < 1) {
+          throw new BadRequestException(
+            `confirmedQuantity must be at least 1 when order item ${item.id} is available.`,
+          );
+        }
+
+        item.isAvailable = submitted.isAvailable;
+        item.confirmedQuantity = submitted.confirmedQuantity;
+      }
+
+      const updatedItems = await manager.save(OrderItem, order.items);
+
+      return {
+        order_id: order.id,
+        items: updatedItems.map((item) => ({
+          id: item.id,
+          ordered_quantity: item.qty,
+          isAvailable: item.isAvailable,
+          confirmedQuantity: item.confirmedQuantity,
+        })),
+      };
+    });
+  }
+
+  async updateAdminOrderStatus(
+    orderId: number,
+    storeId: string,
+    dto: UpdateAdminOrderStatusDto,
+    adminId: string,
+  ) {
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id: orderId, storeId },
+        relations: ['items'],
+      });
+
+      if (!order) throw new NotFoundException('Order not found');
+
+      const targetStatus = dto.status;
+      if (order.status === targetStatus) {
+        throw new BadRequestException(
+          `Order is already in status ${targetStatus}.`,
+        );
+      }
+
+      const expectedNext = VALID_ADMIN_TRANSITIONS[order.status];
+      if (expectedNext !== targetStatus) {
+        throw new BadRequestException(
+          `Invalid transition: ${order.status} -> ${targetStatus}. Expected: ${expectedNext ?? 'none'}.`,
+        );
+      }
+
+      if (order.status === OrderStatus.PENDING) {
+        this.assertAdminChecklistCanConfirm(order.items);
+      }
+
+      const previousStatus = order.status;
+      order.status = targetStatus;
+
+      const savedOrder = await manager.save(Order, order);
+      await manager.save(
+        OrderStatusLog,
+        manager.create(OrderStatusLog, {
+          order: { id: savedOrder.id } as Order,
+          fromStatus: previousStatus,
+          toStatus: targetStatus,
+          actor: OrderActor.ADMIN,
+          notes: `Updated by admin ${adminId}`,
+        }),
+      );
+
+      return {
+        order: {
+          id: savedOrder.id,
+          order_no: savedOrder.orderNumber,
+          previous_status: previousStatus,
+          status: savedOrder.status,
+          user_id: savedOrder.userId,
+        },
+      };
+    });
+
+    this.notifyOrderStatusUpdated(
+      updated.order.user_id,
+      updated.order.status,
+      updated.order.order_no,
+    );
+
+    return {
+      order: {
+        id: updated.order.id,
+        order_no: updated.order.order_no,
+        previous_status: updated.order.previous_status,
+        status: updated.order.status,
+      },
     };
   }
 
@@ -486,5 +694,62 @@ export class OrdersService {
 
   private formatMoney(value: number | string): string {
     return Number(value).toFixed(2);
+  }
+
+  private assertAdminChecklistCanConfirm(items: OrderItem[]): void {
+    if (!items.length) {
+      throw new BadRequestException('Order cannot be confirmed without items.');
+    }
+
+    let availableItemCount = 0;
+
+    for (const item of items) {
+      const orderedQuantity = Number(item.qty);
+      const confirmedQuantity = Number(item.confirmedQuantity);
+
+      if (confirmedQuantity < 0 || confirmedQuantity > orderedQuantity) {
+        throw new BadRequestException(
+          `Invalid confirmed quantity for order item ${item.id}.`,
+        );
+      }
+
+      if (item.isAvailable) {
+        if (confirmedQuantity < 1) {
+          throw new BadRequestException(
+            `Available order item ${item.id} must have a confirmed quantity.`,
+          );
+        }
+        availableItemCount += 1;
+      } else if (confirmedQuantity !== 0) {
+        throw new BadRequestException(
+          `Unavailable order item ${item.id} must have confirmed quantity 0.`,
+        );
+      }
+    }
+
+    if (availableItemCount === 0) {
+      throw new BadRequestException(
+        'At least one order item must be available before confirming the order.',
+      );
+    }
+  }
+
+  private notifyOrderStatusUpdated(
+    userId: string,
+    status: OrderStatus,
+    orderNumber: string,
+  ): void {
+    const messages: Partial<Record<OrderStatus, string>> = {
+      [OrderStatus.CONFIRMED]: 'Your order has been confirmed by the store.',
+      [OrderStatus.READY_FOR_PICKUP]: 'Your order is ready for pickup.',
+      [OrderStatus.PICKED_UP]: 'Your order has been marked as picked up.',
+    };
+
+    const message = messages[status];
+    if (!message) return;
+
+    this.logger.log(
+      `Notification deferred for user ${userId}, order ${orderNumber}: ${message}`,
+    );
   }
 }
