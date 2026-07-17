@@ -144,6 +144,12 @@ export class AdminService {
         store: {
           id: admin.storeId,
           name: store.name,
+          address: store.formattedAddress,
+          city: store.city,
+          phone: store.phone,
+          opening_time: store.openingTime,
+          closing_time: store.closingTime,
+          is_active: store.isActive,
         },
       },
     };

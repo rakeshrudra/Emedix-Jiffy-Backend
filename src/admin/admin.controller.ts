@@ -6,24 +6,35 @@ import {
   HttpStatus,
   Post,
   Request,
+  Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Request as ExpressRequest, Response } from 'express';
 import { AdminService } from './admin.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
-import { AdminRefreshTokenDto } from './dto/admin-refresh-token.dto';
 import { AdminSignupDto } from './dto/admin-signup.dto';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+
+const ACCESS_TOKEN_COOKIE = 'admin_access_token';
+const REFRESH_TOKEN_COOKIE = 'admin_refresh_token';
+const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000; // 15m
+const REFRESH_TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30d
 
 @ApiTags('Admin Auth')
 @Controller('api/admin/auth')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * POST /api/admin/auth/signup
@@ -42,7 +53,7 @@ export class AdminController {
 
   /**
    * POST /api/admin/auth/login
-   * Logs in an admin with username and password.
+   * Logs in an admin with username and password; issues tokens as httpOnly cookies.
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -50,22 +61,33 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Admin login successful' })
   @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  login(@Body() dto: AdminLoginDto) {
-    return this.adminService.login(dto.username, dto.password);
+  async login(
+    @Body() dto: AdminLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.adminService.login(dto.username, dto.password);
+    return this.attachTokenCookiesAndStrip(res, result);
   }
 
   /**
    * POST /api/admin/auth/refresh
-   * Refreshes admin access and refresh tokens.
+   * Reads the refresh token from its httpOnly cookie and issues a new token pair.
    */
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh admin access and refresh tokens' })
   @ApiResponse({ status: 200, description: 'New admin tokens issued' })
-  @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  refresh(@Body() dto: AdminRefreshTokenDto) {
-    return this.adminService.refresh(dto.refresh_token);
+  async refresh(
+    @Request() req: ExpressRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
+    if (!refreshToken) {
+      throw new UnauthorizedException();
+    }
+    const result = await this.adminService.refresh(refreshToken);
+    return this.attachTokenCookiesAndStrip(res, result);
   }
 
   /**
@@ -84,16 +106,44 @@ export class AdminController {
 
   /**
    * POST /api/admin/auth/logout
-   * Logs out the current admin client-side.
+   * Clears the admin's token cookies server-side.
    */
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AdminJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Log out the current admin client-side' })
+  @ApiOperation({ summary: "Log out the current admin, clearing the session's token cookies" })
   @ApiResponse({ status: 200, description: 'Logout acknowledged' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  logout() {
+  logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie(ACCESS_TOKEN_COOKIE, this.cookieOptions());
+    res.clearCookie(REFRESH_TOKEN_COOKIE, this.cookieOptions());
     return this.adminService.logout();
+  }
+
+  private attachTokenCookiesAndStrip<
+    T extends { data: { access_token: string; refresh_token: string } },
+  >(res: Response, result: T) {
+    res.cookie(ACCESS_TOKEN_COOKIE, result.data.access_token, {
+      ...this.cookieOptions(),
+      maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+    });
+    res.cookie(REFRESH_TOKEN_COOKIE, result.data.refresh_token, {
+      ...this.cookieOptions(),
+      maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    });
+
+    const { access_token: _access, refresh_token: _refresh, ...restData } =
+      result.data;
+    return { ...result, data: restData };
+  }
+
+  private cookieOptions() {
+    return {
+      httpOnly: true,
+      secure: this.configService.get<string>('NODE_ENV') === 'production',
+      sameSite: 'lax' as const,
+      path: '/',
+    };
   }
 }
