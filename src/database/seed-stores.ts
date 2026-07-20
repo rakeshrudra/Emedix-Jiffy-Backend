@@ -186,10 +186,10 @@ async function seedStores() {
     const store = storeRepository.create({
       ...(existing ?? {}),
       storeId: row.storeId,
+      emedixName: existing?.emedixName ?? row.name,
       name: row.name,
       addressLine1: row.formattedAddress.slice(0, 255),
       formattedAddress: row.formattedAddress,
-      placeId: existing?.placeId ?? null,
       city,
       state,
       pincode,
