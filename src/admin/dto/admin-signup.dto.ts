@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class AdminSignupDto {
-  @ApiProperty({ example: 'shaikpet_admin' })
+  @ApiProperty({ example: 'admin' })
   @IsString()
   @MinLength(3)
   @MaxLength(64)

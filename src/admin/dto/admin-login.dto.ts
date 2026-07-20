@@ -6,7 +6,7 @@ export class AdminLoginDto {
   @IsString()
   username: string;
 
-  @ApiProperty({ example: 'asdf@123' })
+  @ApiProperty({ example: 'Admin@123' })
   @IsString()
   password: string;
 }

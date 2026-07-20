@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
+import { Store } from '../stores/entities/store.entity';
 import { AdminSignupDto } from './dto/admin-signup.dto';
 import { Admin } from './entities/admin.entity';
 
@@ -97,12 +98,7 @@ export class AdminService {
       message: 'Admin login successful',
       data: {
         ...tokens,
-        admin: {
-          id: admin.id,
-          username: admin.username,
-          store_id: admin.storeId,
-          store_name: store.name,
-        },
+        admin: this.formatAdminProfile(admin, store),
       },
     };
   }
@@ -138,20 +134,7 @@ export class AdminService {
 
     return {
       success: true,
-      data: {
-        id: admin.id,
-        username: admin.username,
-        store: {
-          id: admin.storeId,
-          name: store.name,
-          address: store.formattedAddress,
-          city: store.city,
-          phone: store.phone,
-          opening_time: store.openingTime,
-          closing_time: store.closingTime,
-          is_active: store.isActive,
-        },
-      },
+      data: this.formatAdminProfile(admin, store),
     };
   }
 
@@ -197,5 +180,22 @@ export class AdminService {
 
   private normalizeUsername(username: string): string {
     return username.trim().toLowerCase();
+  }
+
+  private formatAdminProfile(admin: Admin, store: Store) {
+    return {
+      id: admin.id,
+      username: admin.username,
+      store: {
+        id: admin.storeId,
+        name: store.name,
+        address: store.formattedAddress,
+        city: store.city,
+        phone: store.phone,
+        opening_time: store.openingTime,
+        closing_time: store.closingTime,
+        is_active: store.isActive,
+      },
+    };
   }
 }
