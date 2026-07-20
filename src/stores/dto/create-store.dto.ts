@@ -20,6 +20,13 @@ export class CreateStoreDto {
   @Transform(({ value }) => value?.trim())
   store_id: string;
 
+  @ApiProperty({ example: 'Jiffy Rajpur Road', description: 'Store name as used in the Emedix system' })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(255)
+  @Transform(({ value }) => value?.trim())
+  emedix_name: string;
+
   @ApiProperty({ example: 'Jiffy Pharmacy - Rajpur Road' })
   @IsNotEmpty()
   @IsString()
@@ -39,12 +46,6 @@ export class CreateStoreDto {
   @IsString()
   @MaxLength(500)
   formatted_address: string;
-
-  @ApiProperty({ example: 'ChIJN1t_tDeuEmsRUsoyG83frY4', required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  place_id?: string;
 
   @ApiProperty({ example: 'Dehradun' })
   @IsNotEmpty()
@@ -91,10 +92,10 @@ export class CreateStoreDto {
   @Max(50)
   delivery_radius_km?: number;
 
-  @ApiProperty({ example: '+91-135-2712345', required: false })
+  @ApiProperty({ example: '9876543210', description: '10-digit phone number', required: false })
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @Matches(/^[6-9]\d{9}$/, { message: 'phone must be a valid 10-digit Indian phone number' })
   phone?: string;
 
   @ApiProperty({ example: '09:00:00', description: 'Daily opening time (HH:MM:SS)', required: false })

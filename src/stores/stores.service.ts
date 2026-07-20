@@ -40,10 +40,10 @@ export class StoresService {
 
     const store = this.storeRepository.create({
       storeId: dto.store_id,
+      emedixName: dto.emedix_name,
       name: dto.name,
       addressLine1: dto.address_line_1,
       formattedAddress: dto.formatted_address,
-      placeId: dto.place_id ?? null,
       city: dto.city,
       state: dto.state,
       pincode: dto.pincode,
@@ -180,7 +180,7 @@ export class StoresService {
     const rows: any[] = await this.storeRepository.query(
       `
       SELECT
-        id, store_id, name, address_line_1, formatted_address, place_id,
+        id, store_id, emedix_name, name, address_line_1, formatted_address,
         city, state, pincode, country,
         latitude, longitude, delivery_radius_km, phone,
         opening_time, closing_time, is_active,
@@ -203,10 +203,10 @@ export class StoresService {
     return rows.map((r) => ({
       id: r.id,
       store_id: r.store_id,
+      emedix_name: r.emedix_name,
       name: r.name,
       address_line_1: r.address_line_1,
       formatted_address: r.formatted_address,
-      place_id: r.place_id ?? null,
       city: r.city,
       state: r.state,
       pincode: r.pincode,
@@ -253,10 +253,10 @@ export class StoresService {
     return {
       id: s.id,
       store_id: s.storeId,
+      emedix_name: s.emedixName,
       name: s.name,
       address_line_1: s.addressLine1,
       formatted_address: s.formattedAddress,
-      place_id: s.placeId ?? null,
       city: s.city,
       state: s.state,
       pincode: s.pincode,
@@ -268,8 +268,6 @@ export class StoresService {
       opening_time: s.openingTime ?? null,
       closing_time: s.closingTime ?? null,
       is_active: s.isActive,
-      created_at: s.createdAt,
-      updated_at: s.updatedAt,
     };
   }
 }
