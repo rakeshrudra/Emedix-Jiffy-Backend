@@ -1,11 +1,4 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('stores')
 export class Store {
@@ -15,6 +8,9 @@ export class Store {
   @Column({ name: 'store_id', unique: true })
   storeId: string;
 
+  @Column({ name: 'emedix_name' })
+  emedixName: string;
+
   @Column()
   name: string;
 
@@ -23,9 +19,6 @@ export class Store {
 
   @Column({ name: 'formatted_address', type: 'text' })
   formattedAddress: string;
-
-  @Column({ name: 'place_id', nullable: true })
-  placeId: string | null;
 
   @Column()
   city: string;
@@ -50,7 +43,7 @@ export class Store {
   @Column('decimal', { name: 'delivery_radius_km', precision: 5, scale: 2, default: 5.0 })
   deliveryRadiusKm: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
   phone: string | null;
 
   @Column({ name: 'opening_time', type: 'time', nullable: true })
@@ -61,10 +54,4 @@ export class Store {
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

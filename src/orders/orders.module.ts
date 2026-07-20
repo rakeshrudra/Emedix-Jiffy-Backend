@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
-import { OrdersController } from './orders.controller';
+import { AdminOrdersController, OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -14,6 +14,7 @@ import { StoresModule } from '../stores/stores.module';
 import { CartModule } from '../cart/cart.module';
 import { AddressesModule } from '../addresses/addresses.module';
 import { UsersModule } from '../users/users.module';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
     imports: [
@@ -25,9 +26,10 @@ import { UsersModule } from '../users/users.module';
         CartModule,
         AddressesModule,
         UsersModule,
+        AdminModule,
     ],
-    controllers: [OrdersController],
+    controllers: [OrdersController, AdminOrdersController],
     providers: [OrdersService, JwtAuthGuard],
     exports: [OrdersService],
 })
-export class OrdersModule { }
+export class OrdersModule {}

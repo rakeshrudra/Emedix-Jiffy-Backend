@@ -36,6 +36,10 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 export class CartController {
   constructor(private readonly cartService: CartService) {}
 
+  /**
+   * GET /api/cart
+   * Returns carts, or one cart when store_id is supplied.
+   */
   @Get()
   @ApiOperation({ summary: 'Get carts, or one cart when store_id is supplied' })
   @ApiQuery({
@@ -48,6 +52,10 @@ export class CartController {
     return this.cartService.getCart(this.getUserId(req), query.store_id);
   }
 
+  /**
+   * POST /api/cart/items
+   * Adds an item to the cart (increments quantity if already present).
+   */
   @Post('items')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -63,6 +71,10 @@ export class CartController {
     return this.cartService.addItem(this.getUserId(req), dto);
   }
 
+  /**
+   * PATCH /api/cart/items/:productCode
+   * Updates item quantity (0 removes the item).
+   */
   @Patch('items/:productCode')
   @ApiOperation({ summary: 'Update item quantity (0 removes the item)' })
   @ApiParam({ name: 'productCode', description: 'ERP product code' })
@@ -87,6 +99,10 @@ export class CartController {
     );
   }
 
+  /**
+   * DELETE /api/cart/items/:productCode
+   * Removes a single item from the cart.
+   */
   @Delete('items/:productCode')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a single item from cart' })
@@ -110,6 +126,10 @@ export class CartController {
     );
   }
 
+  /**
+   * DELETE /api/cart
+   * Clears a store cart.
+   */
   @Delete()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -125,6 +145,10 @@ export class CartController {
     return this.cartService.clearCart(this.getUserId(req), query.store_id);
   }
 
+  /**
+   * POST /api/cart/validate
+   * Pre-checkout validation — checks stock and price changes.
+   */
   @Post('validate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

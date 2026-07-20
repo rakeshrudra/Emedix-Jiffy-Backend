@@ -1,5 +1,5 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, NotFoundException, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
@@ -48,6 +48,30 @@ export class ProductsController {
     return {
       success: true,
       data: products,
+    };
+  }
+
+  /**
+   * GET /api/products/code/:code?store_id=001
+   * Returns a single product by its product code within a store.
+   */
+  @Get('code/:code')
+  @ApiOperation({ summary: 'Get a single product by its product code' })
+  @ApiParam({ name: 'code', description: 'Product code (e.g. MED10001)' })
+  @ApiQuery({ name: 'store_id', required: true, description: 'Store ID the product belongs to' })
+  @ApiResponse({ status: 200, description: 'Product detail' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  async getProductByCode(
+    @Param('code') code: string,
+    @Query('store_id') storeId: string,
+  ) {
+    const product = await this.productsService.findByCode(storeId, code);
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+    return {
+      success: true,
+      data: product,
     };
   }
 

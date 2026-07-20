@@ -12,7 +12,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ name: 'mobile_no', unique: true })
   mobile_no: string;
 
   @Column({ default: '' })
@@ -20,7 +20,7 @@ export class User {
 
   // Nullable because unique constraint prevents default ''; set after Firebase auth
   @Index()
-  @Column({ nullable: true, unique: true })
+  @Column({ name: 'firebase_uid', nullable: true, unique: true })
   firebase_uid: string;
 
   @CreateDateColumn()

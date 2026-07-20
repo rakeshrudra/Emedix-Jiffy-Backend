@@ -1,0 +1,6 @@
+store_id,productName,productCode,productCompany,hsnCode,prescriptionRequired,productPrice,productDiscountPrice,productType,packagingOfMedicines,productComposition,status,productStock
+1,Paracetamol 500mg Tablet,MED10001,Cipla Ltd,3004,0,25,22,Tablet,10 Tablets per Strip,Paracetamol 500mg,Enable,250
+1,Amoxicillin 250mg Capsule,MED10002,Sun Pharma,3004,1,85,78,Capsule,10 Capsules per Strip,Amoxicillin 250mg,Enable,120
+1,Cetirizine 10mg Tablet,MED10003,Dr. Reddy's Laboratories,3004,0,18,15,Tablet,10 Tablets per Strip,Cetirizine Hydrochloride 10mg,Enable,300
+1,Azithromycin 500mg Tablet,MED10004,Alkem Laboratories,3004,1,120,108,Tablet,3 Tablets per Strip,Azithromycin 500mg,Enable,80
+1,ORS Powder Sachet,MED10005,Zydus Healthcare,3004,0,20,18,Oral Powder,1 Sachet (21g),Oral Rehydration Salts,Enable,500

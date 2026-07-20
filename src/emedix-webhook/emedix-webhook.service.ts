@@ -6,6 +6,8 @@ import { Order } from '../orders/entities/order.entity';
 import { OrdersService } from '../orders/orders.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { InvoiceDto } from '../invoices/dto/invoice.dto';
+import { UsersService } from '../users/users.service';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class EmedixWebhookService {
@@ -15,6 +17,7 @@ export class EmedixWebhookService {
         private readonly invoicesService: InvoicesService,
         private readonly productsService: ProductsService,
         private readonly ordersService: OrdersService,
+        private readonly usersService: UsersService,
     ) { }
 
     // ── Product Add / Update ──
@@ -62,9 +65,18 @@ export class EmedixWebhookService {
     // ── Pending Orders ──
     async handlePendingOrders(storeId: string) {
         const orders = await this.ordersService.fetchPendingOrders(storeId);
+        const usersById = new Map<string, User>();
+        for (const order of orders) {
+            if (usersById.has(order.userId)) continue;
+            const user = await this.usersService.findById(order.userId);
+            if (user) usersById.set(order.userId, user);
+        }
+
         return {
             count: orders.length,
-            orders: orders.map((o) => this.formatOrderForErp(o)),
+            orders: orders.map((o) =>
+                this.formatOrderForErp(o, usersById.get(o.userId)),
+            ),
         };
     }
 
@@ -79,7 +91,6 @@ export class EmedixWebhookService {
                 await this.ordersService.applyErpStatusUpdate(
                     inv.order_no,
                     'CONFIRMED',
-                    undefined,
                     undefined,
                     inv.invoice_no,
                 );
@@ -98,26 +109,28 @@ export class EmedixWebhookService {
     }
 
     // ─── Private helpers ────────────────────────────────────────────────────────
-    private formatOrderForErp(order: Order) {
+    private formatOrderForErp(order: Order, user?: User) {
         const address = order.deliveryAddress;
 
         return {
             order_no: order.orderNumber,
             store_id: order.storeId,
-            customer_name: order.customerName,
-            customer_phone: order.customerPhone,
-            delivery_address: {
-                label: address.label,
-                address_line_1: address.addressLine1,
-                address_line_2: address.addressLine2,
-                formatted_address: address.formattedAddress,
-                city: address.city,
-                state: address.state,
-                pincode: address.pincode,
-                country: address.country,
-                latitude: address.latitude,
-                longitude: address.longitude,
-            },
+            customer_name: user?.name ?? '',
+            customer_phone: user?.mobile_no ?? '',
+            delivery_address: address
+                ? {
+                      label: address.label,
+                      address_line_1: address.addressLine1,
+                      address_line_2: address.addressLine2,
+                      formatted_address: address.formattedAddress,
+                      city: address.city,
+                      state: address.state,
+                      pincode: address.pincode,
+                      country: address.country,
+                      latitude: address.latitude,
+                      longitude: address.longitude,
+                  }
+                : null,
             subtotal: order.subtotal,
             discount: order.discount,
             total_amount: order.totalAmount,
