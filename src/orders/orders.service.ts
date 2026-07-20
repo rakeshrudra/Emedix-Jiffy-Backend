@@ -17,6 +17,7 @@ import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ProductsService } from '../products/products.service';
@@ -37,6 +38,15 @@ const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.CONFIRMED]: OrderStatus.READY_FOR_PICKUP,
   [OrderStatus.READY_FOR_PICKUP]: OrderStatus.PICKED_UP,
 };
+
+// Cancellation is a side-exit, not a step in the pickup workflow — allowed
+// from any non-terminal state up to (but not including) PICKED_UP. Cash on
+// pickup means there is no payment/refund to reverse.
+const CANCELLABLE_STATES: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CONFIRMED,
+  OrderStatus.READY_FOR_PICKUP,
+];
 
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 const IDEMPOTENCY_PREFIX = 'order:idem:';
@@ -261,14 +271,21 @@ export class OrdersService {
     return order;
   }
 
-  async getAdminOrders(storeId: string, status?: OrderStatus) {
+  async getAdminOrders(
+    storeId: string,
+    status?: OrderStatus,
+    page = 1,
+    limit = 30,
+  ) {
     const where: Partial<Order> = { storeId };
     if (status) where.status = status;
 
-    const orders = await this.orderRepository.find({
+    const [orders, total] = await this.orderRepository.findAndCount({
       where,
       relations: ['deliveryAddress'],
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     const formattedOrders = await Promise.all(
@@ -295,6 +312,10 @@ export class OrdersService {
 
     return {
       count: formattedOrders.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
       orders: formattedOrders,
     };
   }
@@ -461,7 +482,7 @@ export class OrdersService {
           order: { id: savedOrder.id } as Order,
           fromStatus: previousStatus,
           toStatus: targetStatus,
-          actor: OrderActor.ADMIN,
+          actor: OrderActor.STORE,
           notes: `Updated by admin ${adminId}`,
         }),
       );
@@ -491,6 +512,60 @@ export class OrdersService {
         status: updated.order.status,
       },
     };
+  }
+
+  /**
+   * PATCH /api/orders/:id/cancel (user) and
+   * PATCH /api/admin/orders/:orderId/cancel (store).
+   * Cancellation is a side-exit from PENDING/CONFIRMED/READY_FOR_PICKUP —
+   * not part of the linear pickup workflow, so it bypasses VALID_ADMIN_TRANSITIONS.
+   */
+  async cancelOrder(
+    orderId: number,
+    actor: OrderActor.USER | OrderActor.STORE,
+    owner: { userId?: string; storeId?: string },
+    dto: CancelOrderDto,
+  ): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: {
+          id: orderId,
+          ...(owner.userId ? { userId: owner.userId } : {}),
+          ...(owner.storeId ? { storeId: owner.storeId } : {}),
+        },
+      });
+
+      if (!order) throw new NotFoundException('Order not found');
+
+      if (!CANCELLABLE_STATES.includes(order.status)) {
+        throw new BadRequestException(
+          `Order cannot be cancelled while it is ${order.status}.`,
+        );
+      }
+
+      const previousStatus = order.status;
+      order.status = OrderStatus.CANCELLED;
+      order.cancelledAt = new Date();
+      order.cancellationReason = dto.reason ?? '';
+
+      const savedOrder = await manager.save(Order, order);
+      await manager.save(
+        OrderStatusLog,
+        manager.create(OrderStatusLog, {
+          order: { id: savedOrder.id } as Order,
+          fromStatus: previousStatus,
+          toStatus: OrderStatus.CANCELLED,
+          actor,
+          notes: dto.reason ?? '',
+        }),
+      );
+
+      this.logger.log(
+        `Order ${savedOrder.orderNumber}: ${previousStatus} → CANCELLED (${actor})`,
+      );
+
+      return savedOrder;
+    });
   }
 
   async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {

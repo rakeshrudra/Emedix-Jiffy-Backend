@@ -13,7 +13,7 @@ export enum OrderActor {
     USER = 'USER',
     ERP = 'ERP',
     SYSTEM = 'SYSTEM',
-    ADMIN = 'ADMIN',
+    STORE = 'STORE',
 }
 
 @Entity('order_status_logs')

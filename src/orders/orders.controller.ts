@@ -29,7 +29,9 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { AdminOrdersQueryDto } from './dto/admin-orders-query.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { OrderStatus } from './entities/order.entity';
+import { OrderActor } from './entities/order-status-log.entity';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -139,6 +141,34 @@ export class OrdersController {
     };
   }
 
+  /**
+   * PATCH /api/orders/:id/cancel
+   * Cancels the user's own order (allowed until READY_FOR_PICKUP).
+   */
+  @Patch(':id/cancel')
+  @ApiOperation({ summary: 'Cancel an order (user)' })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({ status: 200, description: 'Order cancelled' })
+  @ApiBadRequestResponse({ description: 'Order cannot be cancelled in its current state' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async cancelOrder(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CancelOrderDto,
+  ) {
+    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    const order = await this.ordersService.cancelOrder(
+      id,
+      OrderActor.USER,
+      { userId },
+      dto,
+    );
+    return {
+      success: true,
+      message: 'Order cancelled successfully',
+      data: order,
+    };
+  }
 }
 
 @ApiTags('Admin Orders')
@@ -150,13 +180,13 @@ export class AdminOrdersController {
 
   /**
    * GET /api/admin/orders
-   * Returns all orders for the authenticated admin store.
+   * Returns paginated orders for the authenticated admin store (default limit 30).
    */
   @Get()
   @ApiOperation({
-    summary: 'Get admin orders for the authenticated admin store',
+    summary: 'Get paginated admin orders for the authenticated admin store',
     description:
-      'Returns all orders for the logged-in admin store. Use the optional status query to filter by order status.',
+      'Returns paginated orders for the logged-in admin store (default limit 30). Use the optional status query to filter by order status.',
   })
   @ApiQuery({
     name: 'status',
@@ -165,13 +195,22 @@ export class AdminOrdersController {
     description:
       'Optional status filter. Leave blank to return all orders for the logged-in admin store.',
   })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 30 })
   @ApiResponse({ status: 200, description: 'Admin order list returned' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getStoreOrders(
     @Request() req,
     @Query() query: AdminOrdersQueryDto,
   ) {
-    return this.ordersService.getAdminOrders(req.user?.store_id, query.status);
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 30));
+    return this.ordersService.getAdminOrders(
+      req.user?.store_id,
+      query.status,
+      page,
+      limit,
+    );
   }
 
   /**
@@ -273,6 +312,36 @@ export class AdminOrdersController {
       success: true,
       message: 'Order status updated successfully',
       data,
+    };
+  }
+
+  /**
+   * PATCH /api/admin/orders/:orderId/cancel
+   * Cancels an order for the authenticated admin store (allowed until READY_FOR_PICKUP).
+   */
+  @Patch(':orderId/cancel')
+  @ApiOperation({ summary: 'Cancel an order (store)' })
+  @ApiParam({ name: 'orderId', type: Number, example: 1 })
+  @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
+  @ApiBadRequestResponse({ description: 'Order cannot be cancelled in its current state' })
+  @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
+  @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
+  async cancelOrder(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body() dto: CancelOrderDto,
+    @Request() req,
+  ) {
+    const order = await this.ordersService.cancelOrder(
+      orderId,
+      OrderActor.STORE,
+      { storeId: req.user?.store_id },
+      dto,
+    );
+
+    return {
+      success: true,
+      message: 'Order cancelled successfully',
+      data: order,
     };
   }
 }
