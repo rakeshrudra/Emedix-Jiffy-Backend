@@ -17,6 +17,7 @@ import { StoresModule } from './stores/stores.module';
 import { CartModule } from './cart/cart.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { AdminModule } from './admin/admin.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -48,6 +49,7 @@ import databaseConfig from './database/database.config';
     CartModule,
     DeliveryModule,
     AdminModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
