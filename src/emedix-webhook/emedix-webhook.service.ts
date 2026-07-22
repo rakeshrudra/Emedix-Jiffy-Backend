@@ -134,6 +134,9 @@ export class EmedixWebhookService {
             subtotal: order.subtotal,
             discount: order.discount,
             total_amount: order.totalAmount,
+            scheduled_date: order.scheduledDate,
+            scedule_starttime: order.sceduleStarttime,
+            schedule_endtime: order.scheduleEndtime,
             created_at: order.createdAt,
             items: order.items.map((i) => ({
                 product_code: i.productCode,
