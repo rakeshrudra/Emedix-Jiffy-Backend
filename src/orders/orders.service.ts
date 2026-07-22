@@ -101,8 +101,17 @@ export class OrdersService {
       return existing;
     }
 
-    // 3. Store must be active and open at order creation time
-    await this.storesService.assertOrderable(dto.store_id);
+    // 3. Store must be active and orderable for either now or the selected schedule
+    if (dto.scheduled_date || dto.scedule_starttime || dto.schedule_endtime) {
+      await this.storesService.assertOrderableAt(
+        dto.store_id,
+        dto.scheduled_date,
+        dto.scedule_starttime,
+        dto.schedule_endtime,
+      );
+    } else {
+      await this.storesService.assertOrderable(dto.store_id);
+    }
 
     // 4. Delivery address must belong to the user
     const address = await this.addressesService.findOwnedAddress(
@@ -196,6 +205,9 @@ export class OrdersService {
         deliveryCharge,
         discount,
         totalAmount,
+        scheduledDate: dto.scheduled_date ?? null,
+        sceduleStarttime: dto.scedule_starttime ?? null,
+        scheduleEndtime: dto.schedule_endtime ?? null,
         deliveryAddress,
         prescriptionUrls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
@@ -304,6 +316,9 @@ export class OrdersService {
           subtotal: this.formatMoney(order.subtotal),
           discount: this.formatMoney(order.discount),
           total_amount: this.formatMoney(order.totalAmount),
+          scheduled_date: order.scheduledDate,
+          scedule_starttime: order.sceduleStarttime,
+          schedule_endtime: order.scheduleEndtime,
           created_at: order.createdAt,
           status: order.status,
         };

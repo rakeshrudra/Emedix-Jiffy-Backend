@@ -76,6 +76,18 @@ export class Order {
   @Column({ type: 'text', default: '' })
   prescriptionUrls: string;
 
+  @ApiProperty({ example: '2026-07-24', required: false })
+  @Column({ name: 'scheduled_date', type: 'date', nullable: true })
+  scheduledDate: string | null;
+
+  @ApiProperty({ example: '11:00:00', required: false })
+  @Column({ name: 'scedule_starttime', type: 'time', nullable: true })
+  sceduleStarttime: string | null;
+
+  @ApiProperty({ example: '12:00:00', required: false })
+  @Column({ name: 'schedule_endtime', type: 'time', nullable: true })
+  scheduleEndtime: string | null;
+
   // Set when Swil ERP first fetches this order
   @Column({ type: 'datetime', nullable: true })
   erpFetchedAt: Date;

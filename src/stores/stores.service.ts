@@ -157,6 +157,46 @@ export class StoresService {
     return store;
   }
 
+  async assertOrderableAt(
+    storeId: string,
+    scheduledDate: string,
+    scheduleStart: string,
+    scheduleEnd: string,
+  ): Promise<Store> {
+    const store = await this.storeRepository.findOne({ where: { storeId } });
+
+    if (!store || !store.isActive) {
+      throw new BadRequestException('This store is currently unavailable. Please try again later.');
+    }
+
+    const scheduledAt = this.parseIstDateTime(scheduledDate, scheduleStart);
+    const now = new Date();
+    const minScheduledAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const maxScheduledAt = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
+    const startMinutes = this.timeToMinutes(scheduleStart);
+    const endMinutes = this.timeToMinutes(scheduleEnd);
+
+    if (scheduledAt.getTime() < minScheduledAt.getTime()) {
+      throw new BadRequestException('Scheduled order time must be at least 1 hour from now.');
+    }
+
+    if (scheduledAt.getTime() > maxScheduledAt.getTime()) {
+      throw new BadRequestException('Scheduled order time cannot be more than 4 days from now.');
+    }
+
+    if (endMinutes <= startMinutes) {
+      throw new BadRequestException('schedule_end must be after schedule_start.');
+    }
+
+    if (!this.isSlotWithinStoreHours(scheduleStart, scheduleEnd, store.openingTime, store.closingTime)) {
+      throw new BadRequestException(
+        `Selected slot must be between ${store.openingTime} and ${store.closingTime}.`,
+      );
+    }
+
+    return store;
+  }
+
   isStoreOpen(store: Store): boolean {
     return this.isStoreOpenAt(store.openingTime, store.closingTime);
   }
@@ -247,6 +287,80 @@ export class StoresService {
     }
     // Overnight (e.g. 22:00 – 02:00) — unlikely for pharmacies but handled
     return currentMinutes >= openMinutes || currentMinutes < closeMinutes;
+  }
+
+  private parseIstDateTime(date: string, time: string): Date {
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const timeMatch = /^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/.exec(time);
+
+    if (!dateMatch || !timeMatch) {
+      throw new BadRequestException('Scheduled date/time format is invalid.');
+    }
+
+    const year = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    const day = Number(dateMatch[3]);
+    const hour = Number(timeMatch[1]);
+    const minute = Number(timeMatch[2]);
+    const second = Number(timeMatch[3]);
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const scheduledAt = new Date(
+      Date.UTC(year, month - 1, day, hour, minute, second) - istOffsetMs,
+    );
+    const normalizedIst = new Date(scheduledAt.getTime() + istOffsetMs);
+
+    if (
+      normalizedIst.getUTCFullYear() !== year ||
+      normalizedIst.getUTCMonth() !== month - 1 ||
+      normalizedIst.getUTCDate() !== day
+    ) {
+      throw new BadRequestException('scheduled_date must be a real calendar date.');
+    }
+
+    return scheduledAt;
+  }
+
+  private isTimeWithinStoreHours(
+    time: string,
+    openingTime: string | null,
+    closingTime: string | null,
+  ): boolean {
+    if (!openingTime || !closingTime) return true;
+
+    const selectedMinutes = this.timeToMinutes(time);
+    const openMinutes = this.timeToMinutes(openingTime);
+    const closeMinutes = this.timeToMinutes(closingTime);
+
+    if (closeMinutes > openMinutes) {
+      return selectedMinutes >= openMinutes && selectedMinutes < closeMinutes;
+    }
+
+    return selectedMinutes >= openMinutes || selectedMinutes < closeMinutes;
+  }
+
+  private isSlotWithinStoreHours(
+    startTime: string,
+    endTime: string,
+    openingTime: string | null,
+    closingTime: string | null,
+  ): boolean {
+    if (!openingTime || !closingTime) return true;
+
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+    const openMinutes = this.timeToMinutes(openingTime);
+    const closeMinutes = this.timeToMinutes(closingTime);
+
+    if (closeMinutes > openMinutes) {
+      return startMinutes >= openMinutes && endMinutes <= closeMinutes;
+    }
+
+    return startMinutes >= openMinutes || endMinutes <= closeMinutes;
+  }
+
+  private timeToMinutes(time: string): number {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
   }
 
   private format(s: Store) {
