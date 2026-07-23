@@ -399,7 +399,6 @@ export class OrdersService {
         hsn_code: item.hsnCode,
         isAvailable: item.isAvailable,
         confirmedQuantity: item.confirmedQuantity,
-        created_at: item.createdAt,
       })),
     };
   }

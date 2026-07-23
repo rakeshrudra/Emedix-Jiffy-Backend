@@ -3,7 +3,6 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
   ManyToOne,
 } from 'typeorm';
 import { Order } from './order.entity';
@@ -68,8 +67,4 @@ export class OrderItem {
   @ApiProperty({ example: '3004' })
   @Column({ default: '' })
   hsnCode: string;
-
-  @ApiProperty()
-  @CreateDateColumn()
-  createdAt: Date;
 }
