@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminOrdersController, OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrdersGateway } from './orders.gateway';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatusLog } from './entities/order-status-log.entity';
@@ -31,7 +32,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         NotificationsModule,
     ],
     controllers: [OrdersController, AdminOrdersController],
-    providers: [OrdersService, JwtAuthGuard],
+    providers: [OrdersService, OrdersGateway, JwtAuthGuard],
     exports: [OrdersService],
 })
-export class OrdersModule {}
+export class OrdersModule { }

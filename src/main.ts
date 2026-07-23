@@ -12,8 +12,7 @@ async function bootstrap() {
 
   // CORS setup
   const allowedOrigins = [
-    process.env.ADMIN_DASHBOARD_URL,
-    'http://localhost:5173',
+    process.env.ADMIN_DASHBOARD_URL, 'http://localhost:5173',
   ].filter(Boolean);
   app.enableCors({
     origin: allowedOrigins,
