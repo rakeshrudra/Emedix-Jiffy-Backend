@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { Order, OrderStatus } from './entities/order.entity';
@@ -27,6 +27,35 @@ import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { UsersService } from '../users/users.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { OrdersGateway } from './orders.gateway';
+
+export interface AdminOrderSummary {
+  order_id: number;
+  order_no: string;
+  store_id: string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: {
+    label: string;
+    address_line_1: string;
+    address_line_2: string;
+    formatted_address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country: string;
+    latitude: string;
+    longitude: string;
+  } | null;
+  subtotal: string;
+  discount: string;
+  total_amount: string;
+  scheduled_date: string | null;
+  scedule_starttime: string | null;
+  schedule_endtime: string | null;
+  created_at: Date;
+  status: OrderStatus;
+}
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -70,6 +99,7 @@ export class OrdersService {
     private readonly addressesService: AddressesService,
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
+    private readonly ordersGateway: OrdersGateway,
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
@@ -151,9 +181,6 @@ export class OrdersService {
     const discount = 0; // dummy for now — no coupon/discount logic yet
     const totalAmount = subtotal + deliveryCharge - discount;
 
-    const orderNumber = await this.generateOrderNumber();
-
-    // 9. Save order + delivery address snapshot + items + initial status log in one transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -161,6 +188,8 @@ export class OrdersService {
     let savedOrder: Order;
 
     try {
+      const orderNumber = await this.generateOrderNumber(queryRunner.manager);
+
       const items = cart.items.map((cartItem) => {
         const price = Number(cartItem.productPrice);
         const discountPrice = Number(cartItem.productDiscountPrice);
@@ -244,7 +273,23 @@ export class OrdersService {
       savedOrder.orderNumber,
     );
 
-    // 7. Cache idempotency key — best-effort, never block the response
+    // 7. Push the new order to the store's admin dashboard in real time via web sockets
+    this.usersService
+      .findById(userId)
+      .then((user) => {
+        this.ordersGateway.emitNewOrder(
+          savedOrder.storeId,
+          this.buildAdminOrderSummary(savedOrder, user),
+        );
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to emit order:new for ${savedOrder.orderNumber}: ${message}`,
+        );
+      });
+
+    // 8. Cache idempotency key — best-effort, never block the response
     this.redis
       .set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL)
       .catch((err) => {
@@ -254,7 +299,7 @@ export class OrdersService {
         );
       });
 
-    // 8. Clear only the ordered store cart now that the order is placed - best-effort
+    // 9. Clear only the ordered store cart now that the order is placed - best-effort
     this.cartService
       .clearByUserAndStoreId(userId, dto.store_id)
       .catch((err) => {
@@ -311,25 +356,7 @@ export class OrdersService {
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const user = await this.usersService.findById(order.userId);
-
-        return {
-          order_id: order.id,
-          order_no: order.orderNumber,
-          store_id: order.storeId,
-          customer_name: user?.name ?? '',
-          customer_phone: user?.mobile_no ?? '',
-          delivery_address: this.formatAdminDeliveryAddress(
-            order.deliveryAddress,
-          ),
-          subtotal: this.formatMoney(order.subtotal),
-          discount: this.formatMoney(order.discount),
-          total_amount: this.formatMoney(order.totalAmount),
-          scheduled_date: order.scheduledDate,
-          scedule_starttime: order.sceduleStarttime,
-          schedule_endtime: order.scheduleEndtime,
-          created_at: order.createdAt,
-          status: order.status,
-        };
+        return this.buildAdminOrderSummary(order, user);
       }),
     );
 
@@ -677,15 +704,16 @@ export class OrdersService {
 
   // ─── Private helpers ─────────────────────────────────────────────────────
 
-  private async generateOrderNumber(): Promise<string> {
+  private async generateOrderNumber(manager: EntityManager): Promise<string> {
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `EJ-${dateStr}-`;
 
-    const lastOrder = await this.orderRepository
-      .createQueryBuilder('order')
+    const lastOrder = await manager
+      .createQueryBuilder(Order, 'order')
       .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
       .orderBy('order.orderNumber', 'DESC')
+      .setLock('pessimistic_write')
       .getOne();
 
     let seq = 1;
@@ -732,6 +760,30 @@ export class OrdersService {
 
   private formatMoney(value: number | string): string {
     return Number(value).toFixed(2);
+  }
+
+  private buildAdminOrderSummary(
+    order: Order,
+    user: { name: string; mobile_no: string } | null,
+  ): AdminOrderSummary {
+    return {
+      order_id: order.id,
+      order_no: order.orderNumber,
+      store_id: order.storeId,
+      customer_name: user?.name ?? '',
+      customer_phone: user?.mobile_no ?? '',
+      delivery_address: order.deliveryAddress
+        ? this.formatAdminDeliveryAddress(order.deliveryAddress)
+        : null,
+      subtotal: this.formatMoney(order.subtotal),
+      discount: this.formatMoney(order.discount),
+      total_amount: this.formatMoney(order.totalAmount),
+      scheduled_date: order.scheduledDate,
+      scedule_starttime: order.sceduleStarttime,
+      schedule_endtime: order.scheduleEndtime,
+      created_at: order.createdAt,
+      status: order.status,
+    };
   }
 
   private assertAdminChecklistCanConfirm(items: OrderItem[]): void {
