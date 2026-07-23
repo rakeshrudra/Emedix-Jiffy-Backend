@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Patch,
+  Put,
   Body,
   HttpCode,
   HttpStatus,
@@ -20,6 +21,7 @@ import {
   VerifyFirebaseTokenDto,
   RefreshTokenDto,
   UpdateProfileDto,
+  UpdateFcmTokenDto,
 } from './dto/auth-otp.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -94,5 +96,23 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Request() req: any) {
     return this.authService.getProfile(req.user?.sub ?? (req.headers['x-user-id'] as string));
+  }
+
+  /**
+   * PUT /api/auth/fcm-token
+   * Called after login and whenever Firebase rotates the device's FCM token.
+   */
+  @Put('fcm-token')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update FCM registration token',
+    description: 'Save the device push token used to deliver order status notifications.',
+  })
+  @ApiResponse({ status: 200, description: 'FCM token updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateFcmToken(@Request() req: any, @Body() dto: UpdateFcmTokenDto) {
+    return this.authService.updateFcmToken(req.user?.sub ?? (req.headers['x-user-id'] as string), dto.fcm_token);
   }
 }

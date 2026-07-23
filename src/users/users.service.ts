@@ -31,4 +31,12 @@ export class UsersService {
     await this.userRepository.update(userId, fields);
     return this.userRepository.findOne({ where: { id: userId } });
   }
+
+  async updateFcmToken(userId: string, fcmToken: string): Promise<void> {
+    await this.userRepository.update(userId, { fcm_token: fcmToken });
+  }
+
+  async clearFcmToken(userId: string): Promise<void> {
+    await this.userRepository.update(userId, { fcm_token: null });
+  }
 }

@@ -15,6 +15,7 @@ import { CartModule } from '../cart/cart.module';
 import { AddressesModule } from '../addresses/addresses.module';
 import { UsersModule } from '../users/users.module';
 import { AdminModule } from '../admin/admin.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
     imports: [
@@ -27,6 +28,7 @@ import { AdminModule } from '../admin/admin.module';
         AddressesModule,
         UsersModule,
         AdminModule,
+        NotificationsModule,
     ],
     controllers: [OrdersController, AdminOrdersController],
     providers: [OrdersService, JwtAuthGuard],

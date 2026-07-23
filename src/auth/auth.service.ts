@@ -145,6 +145,18 @@ export class AuthService {
     };
   }
 
+  /**
+   * PUT /api/auth/fcm-token
+   * Saves/updates the device's FCM registration token for order status push notifications.
+   */
+  async updateFcmToken(userId: string, fcmToken: string) {
+    await this.usersService.updateFcmToken(userId, fcmToken);
+    return {
+      success: true,
+      message: 'FCM token updated successfully',
+    };
+  }
+
   // ─── Private ────────────────────────────────────────────────────────────────
 
   private issueTokens(userId: string, mobile_no: string) {

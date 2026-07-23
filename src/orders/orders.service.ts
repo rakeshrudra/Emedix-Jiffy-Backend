@@ -26,6 +26,7 @@ import { StoresService } from '../stores/stores.service';
 import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { UsersService } from '../users/users.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -40,8 +41,6 @@ const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 // Cancellation is a side-exit, not a step in the pickup workflow — allowed
-// from any non-terminal state up to (but not including) PICKED_UP. Cash on
-// pickup means there is no payment/refund to reverse.
 const CANCELLABLE_STATES: OrderStatus[] = [
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
@@ -70,6 +69,7 @@ export class OrdersService {
     private readonly cartService: CartService,
     private readonly addressesService: AddressesService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
@@ -236,7 +236,15 @@ export class OrdersService {
       await queryRunner.release();
     }
 
-    // 6. Cache idempotency key — best-effort, never block the response
+    // 6. Fire a notification to the customer
+    this.notifyOrderStatusUpdated(
+      userId,
+      savedOrder.id,
+      OrderStatus.PENDING,
+      savedOrder.orderNumber,
+    );
+
+    // 7. Cache idempotency key — best-effort, never block the response
     this.redis
       .set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL)
       .catch((err) => {
@@ -246,7 +254,7 @@ export class OrdersService {
         );
       });
 
-    // 7. Clear only the ordered store cart now that the order is placed - best-effort
+    // 8. Clear only the ordered store cart now that the order is placed - best-effort
     this.cartService
       .clearByUserAndStoreId(userId, dto.store_id)
       .catch((err) => {
@@ -515,6 +523,7 @@ export class OrdersService {
 
     this.notifyOrderStatusUpdated(
       updated.order.user_id,
+      updated.order.id,
       updated.order.status,
       updated.order.order_no,
     );
@@ -529,19 +538,13 @@ export class OrdersService {
     };
   }
 
-  /**
-   * PATCH /api/orders/:id/cancel (user) and
-   * PATCH /api/admin/orders/:orderId/cancel (store).
-   * Cancellation is a side-exit from PENDING/CONFIRMED/READY_FOR_PICKUP —
-   * not part of the linear pickup workflow, so it bypasses VALID_ADMIN_TRANSITIONS.
-   */
   async cancelOrder(
     orderId: number,
     actor: OrderActor.USER | OrderActor.STORE,
     owner: { userId?: string; storeId?: string },
     dto: CancelOrderDto,
   ): Promise<Order> {
-    return this.dataSource.transaction(async (manager) => {
+    const savedOrder = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
         where: {
           id: orderId,
@@ -581,6 +584,15 @@ export class OrdersService {
 
       return savedOrder;
     });
+
+    this.notifyOrderStatusUpdated(
+      savedOrder.userId,
+      savedOrder.id,
+      OrderStatus.CANCELLED,
+      savedOrder.orderNumber,
+    );
+
+    return savedOrder;
   }
 
   async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {
@@ -598,7 +610,6 @@ export class OrdersService {
     return invoice;
   }
 
-  // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
   async fetchPendingOrders(storeId: string): Promise<Order[]> {
     const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
 
@@ -763,20 +774,33 @@ export class OrdersService {
 
   private notifyOrderStatusUpdated(
     userId: string,
+    orderId: number,
     status: OrderStatus,
     orderNumber: string,
   ): void {
     const messages: Partial<Record<OrderStatus, string>> = {
+      [OrderStatus.PENDING]: 'Your order has been placed successfully.',
       [OrderStatus.CONFIRMED]: 'Your order has been confirmed by the store.',
       [OrderStatus.READY_FOR_PICKUP]: 'Your order is ready for pickup.',
       [OrderStatus.PICKED_UP]: 'Your order has been marked as picked up.',
+      [OrderStatus.CANCELLED]: 'Your order has been cancelled.',
     };
 
     const message = messages[status];
     if (!message) return;
 
-    this.logger.log(
-      `Notification deferred for user ${userId}, order ${orderNumber}: ${message}`,
-    );
+    // Best-effort, fire-and-forget — must never affect the status-update response.
+    this.notificationsService
+      .sendOrderStatusUpdate(userId, `Order ${orderNumber}`, message, {
+        orderId,
+        orderNumber,
+        status,
+      })
+      .catch((err) => {
+        const message2 = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Push notification failed for user ${userId}, order ${orderNumber}: ${message2}`,
+        );
+      });
   }
 }
