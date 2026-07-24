@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
 import { ProductSwil } from './entities/product-swil.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
+import { parseInventoryFile } from './utils/inventory-upload.util';
 
 export interface ProductListResult {
     data: Product[];
@@ -22,6 +23,7 @@ export class ProductsService {
         private readonly productRepository: Repository<Product>,
         @InjectRepository(ProductSwil)
         private readonly productSwilRepository: Repository<ProductSwil>,
+        private readonly dataSource: DataSource,
     ) { }
 
     async listProducts(dto: SearchProductsDto): Promise<ProductListResult> {
@@ -184,5 +186,54 @@ export class ProductsService {
                 skipUpdateIfNoValuesChanged: true,
             },
         );
+    }
+
+    // ─── Admin bulk inventory upload (live products table) ──────────────────
+
+    async uploadInventory(
+        storeId: string,
+        fileBuffer: Buffer,
+    ): Promise<{ store_id: string; products_inserted: number; warnings: string[] }> {
+        const { rows, warnings, fatalError } = parseInventoryFile(fileBuffer);
+
+        if (fatalError) {
+            throw new BadRequestException({
+                message: fatalError,
+            });
+        }
+
+        const INSERT_CHUNK_SIZE = 500;
+
+        await this.dataSource.transaction(async (manager) => {
+            await manager.delete(Product, { storeId });
+
+            const products = rows.map((row) => ({
+                storeId,
+                productCode: row.productCode,
+                productName: row.productName,
+                productType: row.productType,
+                productStock: row.productStock,
+                productPrice: row.productPrice,
+                productDiscountPrice: row.productPrice,
+                productCompany: row.productCompany,
+                hsnCode: '',
+                packagingOfMedicines: '',
+                productComposition: '',
+                prescriptionRequired: true,
+                status: ProductStatus.ENABLE,
+            }));
+
+            for (let i = 0; i < products.length; i += INSERT_CHUNK_SIZE) {
+                const chunk = products.slice(i, i + INSERT_CHUNK_SIZE);
+                await manager
+                    .createQueryBuilder()
+                    .insert()
+                    .into(Product)
+                    .values(chunk)
+                    .execute();
+            }
+        });
+
+        return { store_id: storeId, products_inserted: rows.length, warnings };
     }
 }
