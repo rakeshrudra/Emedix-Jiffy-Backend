@@ -76,6 +76,11 @@ const CANCELLABLE_STATES: OrderStatus[] = [
   OrderStatus.READY_FOR_PICKUP,
 ];
 
+const RESTORE_STOCK_STATES: OrderStatus[] = [
+  OrderStatus.CONFIRMED,
+  OrderStatus.READY_FOR_PICKUP,
+];
+
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 const IDEMPOTENCY_PREFIX = 'order:idem:';
 
@@ -536,6 +541,10 @@ export class OrdersService {
         }),
       );
 
+      if (previousStatus === OrderStatus.PENDING && targetStatus === OrderStatus.CONFIRMED) {
+        await this.reduceProductStock(manager, storeId, order.items);
+      }
+
       return {
         order: {
           id: savedOrder.id,
@@ -577,6 +586,7 @@ export class OrdersService {
           ...(owner.userId ? { userId: owner.userId } : {}),
           ...(owner.storeId ? { storeId: owner.storeId } : {}),
         },
+        relations: ['items'],
       });
 
       if (!order) throw new NotFoundException('Order not found');
@@ -603,6 +613,10 @@ export class OrdersService {
           notes: dto.reason ?? '',
         }),
       );
+
+      if (RESTORE_STOCK_STATES.includes(previousStatus)) {
+        await this.restoreProductStock(manager, savedOrder.storeId, order.items);
+      }
 
       this.logger.log(
         `Order ${savedOrder.orderNumber}: ${previousStatus} → CANCELLED (${actor})`,
@@ -702,6 +716,50 @@ export class OrdersService {
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────
+
+  private async reduceProductStock(
+    manager: EntityManager,
+    storeId: string,
+    items: OrderItem[],
+  ): Promise<void> {
+    for (const item of items) {
+      const quantity = Number(item.confirmedQuantity) || 0;
+      if (quantity <= 0) continue;
+
+      await manager
+        .createQueryBuilder()
+        .update(Product)
+        .set({
+          productStock: () => 'GREATEST(productStock - :quantity, 0)',
+        })
+        .where('storeId = :storeId', { storeId })
+        .andWhere('productCode = :productCode', { productCode: item.productCode })
+        .setParameters({ quantity })
+        .execute();
+    }
+  }
+
+  private async restoreProductStock(
+    manager: EntityManager,
+    storeId: string,
+    items: OrderItem[],
+  ): Promise<void> {
+    for (const item of items) {
+      const quantity = Number(item.confirmedQuantity) || 0;
+      if (quantity <= 0) continue;
+
+      await manager
+        .createQueryBuilder()
+        .update(Product)
+        .set({
+          productStock: () => 'productStock + :quantity',
+        })
+        .where('storeId = :storeId', { storeId })
+        .andWhere('productCode = :productCode', { productCode: item.productCode })
+        .setParameters({ quantity })
+        .execute();
+    }
+  }
 
   private async generateOrderNumber(manager: EntityManager): Promise<string> {
     const now = new Date();
