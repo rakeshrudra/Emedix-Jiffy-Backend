@@ -10,10 +10,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { Order, OrderStatus } from './entities/order.entity';
+import { Order, OrderActor, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
-import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
@@ -51,8 +50,8 @@ export interface AdminOrderSummary {
   discount: string;
   total_amount: string;
   scheduled_date: string | null;
-  scedule_starttime: string | null;
-  schedule_endtime: string | null;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
   created_at: Date;
   status: OrderStatus;
 }
@@ -93,8 +92,6 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
-    @InjectRepository(OrderStatusLog)
-    private readonly statusLogRepository: Repository<OrderStatusLog>,
     @InjectRepository(OrderDeliveryAddress)
     private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
     private readonly invoicesService: InvoicesService,
@@ -137,12 +134,12 @@ export class OrdersService {
     }
 
     // 3. Store must be active and orderable for either now or the selected schedule
-    if (dto.scheduled_date || dto.scedule_starttime || dto.schedule_endtime) {
+    if (dto.scheduled_date || dto.scheduled_start_time || dto.scheduled_end_time) {
       await this.storesService.assertOrderableAt(
         dto.store_id,
         dto.scheduled_date,
-        dto.scedule_starttime,
-        dto.schedule_endtime,
+        dto.scheduled_start_time,
+        dto.scheduled_end_time,
       );
     } else {
       await this.storesService.assertOrderable(dto.store_id);
@@ -240,8 +237,8 @@ export class OrdersService {
         discount,
         total_amount: totalAmount,
         scheduled_date: dto.scheduled_date ?? null,
-        scedule_starttime: dto.scedule_starttime ?? null,
-        schedule_endtime: dto.schedule_endtime ?? null,
+        scheduled_start_time: dto.scheduled_start_time ?? null,
+        scheduled_end_time: dto.scheduled_end_time ?? null,
         delivery_address: deliveryAddress,
         prescription_urls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
@@ -250,17 +247,6 @@ export class OrdersService {
       });
 
       savedOrder = await queryRunner.manager.save(Order, order);
-
-      await queryRunner.manager.save(
-        OrderStatusLog,
-        this.statusLogRepository.create({
-          order: { id: savedOrder.id } as Order,
-          from_status: null,
-          to_status: OrderStatus.PENDING,
-          actor: OrderActor.SYSTEM,
-          notes: 'Order created after payment success',
-        }),
-      );
 
       await queryRunner.commitTransaction();
     } catch (err) {
@@ -335,7 +321,7 @@ export class OrdersService {
   async getOrderById(order_id: number, user_id: string): Promise<Order> {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, user_id: user_id },
-      relations: ['items', 'status_logs'],
+      relations: ['items'],
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;
@@ -530,16 +516,6 @@ export class OrdersService {
       order.status = targetStatus;
 
       const savedOrder = await manager.save(Order, order);
-      await manager.save(
-        OrderStatusLog,
-        manager.create(OrderStatusLog, {
-          order: { id: savedOrder.id } as Order,
-          from_status: previousStatus,
-          to_status: targetStatus,
-          actor: OrderActor.STORE,
-          notes: `Updated by admin ${admin_id}`,
-        }),
-      );
 
       if (previousStatus === OrderStatus.PENDING && targetStatus === OrderStatus.CONFIRMED) {
         await this.reduceProductStock(manager, store_id, order.items);
@@ -601,18 +577,9 @@ export class OrdersService {
       order.status = OrderStatus.CANCELLED;
       order.cancelled_at = new Date();
       order.cancellation_reason = dto.reason ?? '';
+      order.cancelled_by = actor === OrderActor.USER ? 'USER' : 'STORE';
 
       const savedOrder = await manager.save(Order, order);
-      await manager.save(
-        OrderStatusLog,
-        manager.create(OrderStatusLog, {
-          order: { id: savedOrder.id } as Order,
-          from_status: previousStatus,
-          to_status: OrderStatus.CANCELLED,
-          actor,
-          notes: dto.reason ?? '',
-        }),
-      );
 
       if (RESTORE_STOCK_STATES.includes(previousStatus)) {
         await this.restoreProductStock(manager, savedOrder.store_id, order.items);
@@ -701,16 +668,8 @@ export class OrdersService {
     if (invoice_number) order.invoice_number = invoice_number;
 
     const updated = await this.orderRepository.save(order);
-    await this.logTransition(
-      order.id,
-      previousStatus,
-      targetStatus,
-      OrderActor.ERP,
-      notes,
-    );
-
     this.logger.log(
-      `Order ${order_number}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
+      `Order ${order_number}: ${previousStatus} → ${targetStatus} (ERP webhook)${notes ? ` — ${notes}` : ''}`,
     );
     return updated;
   }
@@ -783,23 +742,6 @@ export class OrdersService {
     return `${prefix}${seq.toString().padStart(4, '0')}`;
   }
 
-  private async logTransition(
-    order_id: number,
-    from_status: OrderStatus | null,
-    to_status: OrderStatus,
-    actor: OrderActor,
-    notes?: string,
-  ): Promise<void> {
-    const log = this.statusLogRepository.create({
-      order: { id: order_id } as Order,
-      from_status: from_status ?? null,
-      to_status: to_status,
-      actor,
-      notes: notes ?? '',
-    });
-    await this.statusLogRepository.save(log);
-  }
-
   private formatAdminDeliveryAddress(address: OrderDeliveryAddress) {
     return {
       label: address.label,
@@ -836,8 +778,8 @@ export class OrdersService {
       discount: this.formatMoney(order.discount),
       total_amount: this.formatMoney(order.total_amount),
       scheduled_date: order.scheduled_date,
-      scedule_starttime: order.scedule_starttime,
-      schedule_endtime: order.schedule_endtime,
+      scheduled_start_time: order.scheduled_start_time,
+      scheduled_end_time: order.scheduled_end_time,
       created_at: order.created_at,
       status: order.status,
     };

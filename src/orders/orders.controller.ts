@@ -30,8 +30,7 @@ import { AdminOrdersQueryDto } from './dto/admin-orders-query.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
-import { OrderStatus } from './entities/order.entity';
-import { OrderActor } from './entities/order-status-log.entity';
+import { OrderActor, OrderStatus } from './entities/order.entity';
 
 @ApiTags('Orders')
 @ApiBearerAuth()

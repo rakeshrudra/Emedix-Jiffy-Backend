@@ -9,7 +9,6 @@ import {
   Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
-import { OrderStatusLog } from './order-status-log.entity';
 import { OrderDelivery } from '../../delivery/entities/order-delivery.entity';
 import { OrderDeliveryAddress } from './order-delivery-address.entity';
 
@@ -20,6 +19,13 @@ export enum OrderStatus {
   PICKED_UP = 'PICKED_UP',
   CANCELLED = 'CANCELLED',
   FAILED = 'FAILED',
+}
+
+export enum OrderActor {
+  USER = 'USER',
+  ERP = 'ERP',
+  SYSTEM = 'SYSTEM',
+  STORE = 'STORE',
 }
 
 @Entity('orders')
@@ -81,12 +87,12 @@ export class Order {
   scheduled_date: string | null;
 
   @ApiProperty({ example: '11:00:00', required: false })
-  @Column({ name: 'scedule_starttime', type: 'time', nullable: true })
-  scedule_starttime: string | null;
+  @Column({ name: 'scheduled_start_time', type: 'time', nullable: true })
+  scheduled_start_time: string | null;
 
   @ApiProperty({ example: '12:00:00', required: false })
-  @Column({ name: 'schedule_endtime', type: 'time', nullable: true })
-  schedule_endtime: string | null;
+  @Column({ name: 'scheduled_end_time', type: 'time', nullable: true })
+  scheduled_end_time: string | null;
 
   // Set when Swil ERP first fetches this order
   @Column({ name: 'erp_fetched_at', type: 'datetime', nullable: true })
@@ -107,14 +113,15 @@ export class Order {
   @Column({ name: 'cancellation_reason', type: 'text', default: '' })
   cancellation_reason: string;
 
+  @ApiProperty({ enum: ['USER', 'STORE'], required: false })
+  @Column({ name: 'cancelled_by', type: 'enum', enum: ['USER', 'STORE'], nullable: true })
+  cancelled_by: 'USER' | 'STORE' | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, {
     cascade: true,
     eager: true,
   })
   items: OrderItem[];
-
-  @OneToMany(() => OrderStatusLog, (log) => log.order, { cascade: true })
-  status_logs: OrderStatusLog[];
 
   @OneToOne(() => OrderDelivery, (orderDelivery) => orderDelivery.order)
   delivery?: OrderDelivery | null;
