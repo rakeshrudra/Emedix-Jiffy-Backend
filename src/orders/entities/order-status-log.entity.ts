@@ -23,17 +23,17 @@ export class OrderStatusLog {
     id: number;
 
     @Index()
-    @ManyToOne(() => Order, (order) => order.statusLogs, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Order, (order) => order.status_logs, { onDelete: 'CASCADE' })
     order: Order;
 
     // null means this is the first status (order creation — no previous state)
     @ApiProperty({ example: 'PENDING' })
-    @Column({ nullable: true })
-    fromStatus: string;
+    @Column({ name: 'from_status', nullable: true })
+    from_status: string;
 
     @ApiProperty({ example: 'CONFIRMED' })
-    @Column()
-    toStatus: string;
+    @Column({ name: 'to_status' })
+    to_status: string;
 
     @ApiProperty({ enum: OrderActor, example: OrderActor.ERP })
     @Column({ type: 'enum', enum: OrderActor })
@@ -44,6 +44,6 @@ export class OrderStatusLog {
     notes: string;
 
     @ApiProperty()
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ name: 'created_at' })
+    created_at: Date;
 }

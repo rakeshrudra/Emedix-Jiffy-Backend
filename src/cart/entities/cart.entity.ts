@@ -11,17 +11,17 @@ import {
 import { CartItem } from './cart-item.entity';
 
 @Entity('carts')
-@Unique('UQ_carts_user_store', ['userId', 'storeId'])
+@Unique('UQ_carts_user_store', ['user_id', 'store_id'])
 export class Cart {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Index()
   @Column({ name: 'user_id' })
-  userId: string;
+  user_id: string;
 
   @Column({ name: 'store_id' })
-  storeId: string;
+  store_id: string;
 
   @OneToMany(() => CartItem, (item) => item.cart, {
     cascade: true,
@@ -29,9 +29,9 @@ export class Cart {
   })
   items: CartItem[];
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at' })
+  updated_at: Date;
 }

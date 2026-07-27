@@ -41,8 +41,8 @@ export class EmedixWebhookController {
     @ApiQuery({ name: 'store_id', required: true, description: 'Store ERP code' })
     @ApiResponse({ status: 200, description: 'Pending orders returned' })
     @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
-    getPendingOrders(@Query('store_id') storeId: string) {
-        return this.webhookService.handlePendingOrders(storeId);
+    getPendingOrders(@Query('store_id') store_id: string) {
+        return this.webhookService.handlePendingOrders(store_id);
     }
 
     @Post('invoice')

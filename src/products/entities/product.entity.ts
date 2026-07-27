@@ -15,7 +15,7 @@ export enum ProductStatus {
 }
 
 @Entity('products')
-@Unique(['storeId', 'productCode'])
+@Unique(['store_id', 'product_code'])
 export class Product {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
@@ -23,64 +23,75 @@ export class Product {
 
     @ApiProperty({ example: '001' })
     @Column({ name: 'store_id' })
-    storeId: string;
+    store_id: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @Index()
-    @Column()
-    productName: string;
+    @Column({ name: 'product_name' })
+    product_name: string;
 
     @ApiProperty({ example: 'MED10001' })
-    @Column()
-    productCode: string;
+    @Column({ name: 'product_code' })
+    product_code: string;
 
     @ApiProperty({ example: 'Cipla Ltd' })
     @Index('IDX_products_product_company')
-    @Column()
-    productCompany: string;
+    @Column({ name: 'product_company' })
+    product_company: string;
 
     @ApiProperty({ example: '3004' })
-    @Column()
-    hsnCode: string;
+    @Column({ name: 'hsn_code' })
+    hsn_code: string;
 
     @ApiProperty({ example: false })
-    @Column({ type: 'boolean', default: false })
-    prescriptionRequired: boolean;
+    @Column({ name: 'prescription_required', type: 'boolean', default: false })
+    prescription_required: boolean;
 
     @ApiProperty({ example: 25.0 })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productPrice: number;
+    @Column({ name: 'product_price', type: 'decimal', precision: 10, scale: 2 })
+    product_price: number;
 
     @ApiProperty({ example: 22.0 })
-    @Column({ type: 'decimal', precision: 10, scale: 2 })
-    productDiscountPrice: number;
+    @Column({
+        name: 'product_discount_price',
+        type: 'decimal',
+        precision: 10,
+        scale: 2,
+    })
+    product_discount_price: number;
 
     @ApiProperty({ example: 'Tablet' })
-    @Column()
-    productType: string;
+    @Column({ name: 'product_type' })
+    product_type: string;
 
     @ApiProperty({ example: '10 Tablets per Strip' })
-    @Column()
-    packagingOfMedicines: string;
+    @Column({ name: 'packaging_of_medicines' })
+    packaging_of_medicines: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg' })
     @Index()
-    @Column()
-    productComposition: string;
+    @Column({ name: 'product_composition' })
+    product_composition: string;
 
     @ApiProperty({ enum: ProductStatus, example: ProductStatus.ENABLE })
     @Column({ type: 'enum', enum: ProductStatus, default: ProductStatus.ENABLE })
     status: ProductStatus;
 
     @ApiProperty({ example: 250 })
-    @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-    productStock: number;
+    @Column({
+        name: 'product_stock',
+        type: 'decimal',
+        precision: 10,
+        scale: 2,
+        default: 0,
+    })
+    product_stock: number;
 
     @ApiProperty()
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ name: 'created_at' })
+    created_at: Date;
 
     @ApiProperty()
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @UpdateDateColumn({ name: 'updated_at' })
+    updated_at: Date;
 }

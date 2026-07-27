@@ -9,7 +9,7 @@ export class VerifyFirebaseTokenDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'Firebase ID token is required' })
-  idToken: string;
+  id_token: string;
 }
 
 export class RefreshTokenDto {

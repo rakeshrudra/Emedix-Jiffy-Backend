@@ -63,7 +63,7 @@ export class OrdersGateway implements OnGatewayConnection {
     }
   }
 
-  emitNewOrder(storeId: string, order: AdminOrderSummary): void {
-    this.server.to(`store:${storeId}`).emit('order:new', order);
+  emitNewOrder(store_id: string, order: AdminOrderSummary): void {
+    this.server.to(`store:${store_id}`).emit('order:new', order);
   }
 }

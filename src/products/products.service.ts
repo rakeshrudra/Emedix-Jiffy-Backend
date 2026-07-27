@@ -33,16 +33,16 @@ export class ProductsService {
 
         const qb = this.productRepository
             .createQueryBuilder('p')
-            .where('p.storeId = :storeId', { storeId: dto.store_id })
+            .where('p.store_id = :store_id', { store_id: dto.store_id })
             .andWhere('p.status = :status', { status: ProductStatus.ENABLE })
-            .andWhere('p.productStock > 0')
-            .orderBy('p.productName', 'ASC')
+            .andWhere('p.product_stock > 0')
+            .orderBy('p.product_name', 'ASC')
             .skip(skip)
             .take(limit);
 
         if (dto.q?.trim()) {
             qb.andWhere(
-                '(p.productName LIKE :q OR p.productComposition LIKE :q)',
+                '(p.product_name LIKE :q OR p.product_composition LIKE :q)',
                 { q: `%${dto.q.trim()}%` },
             );
         }
@@ -70,20 +70,20 @@ export class ProductsService {
         const qb = this.productRepository
             .createQueryBuilder('p')
             .where('p.status = :status', { status: ProductStatus.ENABLE })
-            .andWhere('p.productStock > 0')
+            .andWhere('p.product_stock > 0')
             .andWhere(
                 `(
-                    LOWER(p.productName) LIKE :q OR
-                    LOWER(p.productCompany) LIKE :q OR
-                    LOWER(p.productComposition) LIKE :q
+                    LOWER(p.product_name) LIKE :q OR
+                    LOWER(p.product_company) LIKE :q OR
+                    LOWER(p.product_composition) LIKE :q
                 )`,
                 { q: `%${searchText.toLowerCase()}%` },
             )
-            .orderBy('p.productName', 'ASC')
+            .orderBy('p.product_name', 'ASC')
             .take(20);
 
-        if (dto.storeId?.trim()) {
-            qb.andWhere('p.storeId = :storeId', { storeId: dto.storeId.trim() });
+        if (dto.store_id?.trim()) {
+            qb.andWhere('p.store_id = :store_id', { store_id: dto.store_id.trim() });
         }
 
         return qb.getMany();
@@ -93,16 +93,18 @@ export class ProductsService {
      * Finds a product by its ERP code within a store. Returns null if not found —
      * callers decide whether that's a 404 or a validation error.
      */
-    async findByCode(storeId: string, productCode: string): Promise<Product | null> {
-        return this.productRepository.findOne({ where: { productCode, storeId } });
+    async findByCode(store_id: string, product_code: string): Promise<Product | null> {
+        return this.productRepository.findOne({
+            where: { product_code: product_code, store_id: store_id },
+        });
     }
 
     parseStock(product: Product): number {
-        return Number(product.productStock) || 0;
+        return Number(product.product_stock) || 0;
     }
 
     getEffectivePrice(product: Product): number {
-        return Number(product.productDiscountPrice) || Number(product.productPrice) || 0;
+        return Number(product.product_discount_price) || Number(product.product_price) || 0;
     }
 
     /**
@@ -152,23 +154,23 @@ export class ProductsService {
     async upsertFromErp(items: ProductDto[]): Promise<void> {
         await this.productSwilRepository.upsert(
             items.map((item) => ({
-                storeId: item.store_id,
-                productName: item.product_name,
-                productCode: item.product_code,
-                productCompany: item.product_company,
-                hsnCode: item['HSN/SAC'],
-                prescriptionRequired: item.prescription_required,
-                productPrice: item.product_price,
-                productDiscountPrice: item.product_discount_price,
-                productType: item.product_type,
-                packagingOfMedicines: item.packaging_of_medicines,
-                productComposition: item.product_composition,
+                store_id: item.store_id,
+                product_name: item.product_name,
+                product_code: item.product_code,
+                product_company: item.product_company,
+                hsn_code: item['HSN/SAC'],
+                prescription_required: item.prescription_required,
+                product_price: item.product_price,
+                product_discount_price: item.product_discount_price,
+                product_type: item.product_type,
+                packaging_of_medicines: item.packaging_of_medicines,
+                product_composition: item.product_composition,
                 status: item.status,
-                productStock: item.product_stock,
-                lastUpdated: item.last_updated,
+                product_stock: item.product_stock,
+                last_updated: item.last_updated,
             })),
             {
-                conflictPaths: ['storeId', 'productCode'],
+                conflictPaths: ['store_id', 'product_code'],
                 skipUpdateIfNoValuesChanged: true,
             },
         );
@@ -177,12 +179,12 @@ export class ProductsService {
     async updateStockFromErp(items: ProductStockDto[]): Promise<void> {
         await this.productSwilRepository.upsert(
             items.map((item) => ({
-                productCode: item.product_code,
-                storeId: item.store_id,
-                productStock: item.product_stock,
+                product_code: item.product_code,
+                store_id: item.store_id,
+                product_stock: item.product_stock,
             })),
             {
-                conflictPaths: ['storeId', 'productCode'],
+                conflictPaths: ['store_id', 'product_code'],
                 skipUpdateIfNoValuesChanged: true,
             },
         );
@@ -191,35 +193,35 @@ export class ProductsService {
     // ─── Admin bulk inventory upload (live products table) ──────────────────
 
     async uploadInventory(
-        storeId: string,
-        fileBuffer: Buffer,
+        store_id: string,
+        file_buffer: Buffer,
     ): Promise<{ store_id: string; products_inserted: number; warnings: string[] }> {
-        const { rows, warnings, fatalError } = parseInventoryFile(fileBuffer);
+        const { rows, warnings, fatal_error } = parseInventoryFile(file_buffer);
 
-        if (fatalError) {
+        if (fatal_error) {
             throw new BadRequestException({
-                message: fatalError,
+                message: fatal_error,
             });
         }
 
         const INSERT_CHUNK_SIZE = 500;
 
         await this.dataSource.transaction(async (manager) => {
-            await manager.delete(Product, { storeId });
+            await manager.delete(Product, { store_id: store_id });
 
             const products = rows.map((row) => ({
-                storeId,
-                productCode: row.productCode,
-                productName: row.productName,
-                productType: row.productType,
-                productStock: row.productStock,
-                productPrice: row.productPrice,
-                productDiscountPrice: row.productPrice,
-                productCompany: row.productCompany,
-                hsnCode: '',
-                packagingOfMedicines: '',
-                productComposition: '',
-                prescriptionRequired: true,
+                store_id: store_id,
+                product_code: row.product_code,
+                product_name: row.product_name,
+                product_type: row.product_type,
+                product_stock: row.product_stock,
+                product_price: row.product_price,
+                product_discount_price: row.product_price,
+                product_company: row.product_company,
+                hsn_code: '',
+                packaging_of_medicines: '',
+                product_composition: '',
+                prescription_required: true,
                 status: ProductStatus.ENABLE,
             }));
 
@@ -234,6 +236,6 @@ export class ProductsService {
             }
         });
 
-        return { store_id: storeId, products_inserted: rows.length, warnings };
+        return { store_id: store_id, products_inserted: rows.length, warnings };
     }
 }

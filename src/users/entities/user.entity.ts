@@ -24,6 +24,6 @@ export class User {
   @Column({ name: 'fcm_token', nullable: true })
   fcm_token: string | null;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 }

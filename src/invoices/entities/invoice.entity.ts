@@ -11,7 +11,7 @@ import {
 import { InvoiceItem } from './invoice-item.entity';
 
 @Entity('invoices')
-@Unique(['storeId', 'invoiceNo'])
+@Unique(['store_id', 'invoice_no'])
 export class Invoice {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
@@ -19,19 +19,19 @@ export class Invoice {
 
     @ApiProperty({ example: '001' })
     @Column({ name: 'store_id' })
-    storeId: string;
+    store_id: string;
 
     @ApiProperty({ example: 'INV10045' })
-    @Column()
-    invoiceNo: string;
+    @Column({ name: 'invoice_no' })
+    invoice_no: string;
 
     @ApiProperty({ example: '2026-02-27' })
-    @Column()
-    invoiceDate: string;
+    @Column({ name: 'invoice_date' })
+    invoice_date: string;
 
     @ApiProperty({ example: 'EJ-20260606-0001' })
-    @Column()
-    orderNo: string;
+    @Column({ name: 'order_no' })
+    order_no: string;
 
     @ApiProperty({ example: '12.00' })
     @Column()
@@ -42,25 +42,25 @@ export class Invoice {
     subtotal: string;
 
     @ApiProperty({ example: '452.00' })
-    @Column()
-    grandTotal: string;
+    @Column({ name: 'grand_total' })
+    grand_total: string;
 
     @ApiProperty({ example: '40.00' })
-    @Column({ default: '0.00' })
-    shippingCharge: string;
+    @Column({ name: 'shipping_charge', default: '0.00' })
+    shipping_charge: string;
 
     @ApiProperty({ example: '0.00' })
-    @Column({ default: '0.00' })
-    walletPrice: string;
+    @Column({ name: 'wallet_price', default: '0.00' })
+    wallet_price: string;
 
     @OneToMany(() => InvoiceItem, (item) => item.invoice, { cascade: true })
     items: InvoiceItem[];
 
     @ApiProperty()
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ name: 'created_at' })
+    created_at: Date;
 
     @ApiProperty()
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @UpdateDateColumn({ name: 'updated_at' })
+    updated_at: Date;
 }

@@ -19,7 +19,7 @@ export class Address {
 
   @Index()
   @Column({ name: 'user_id' })
-  userId: string;
+  user_id: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
@@ -29,16 +29,16 @@ export class Address {
   label: AddressLabel;
 
   @Column({ name: 'address_line_1', default: '' })
-  addressLine1: string;
+  address_line_1: string;
 
   @Column({ name: 'address_line_2', default: '' })
-  addressLine2: string;
+  address_line_2: string;
 
   @Column({ name: 'formatted_address', type: 'text' })
-  formattedAddress: string;
+  formatted_address: string;
 
   @Column({ name: 'place_id', nullable: true })
-  placeId: string | null;
+  place_id: string | null;
 
   @Column()
   city: string;
@@ -62,11 +62,11 @@ export class Address {
   source: 'gps' | 'manual' | 'places';
 
   @Column({ name: 'is_default', default: false })
-  isDefault: boolean;
+  is_default: boolean;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at' })
+  updated_at: Date;
 }

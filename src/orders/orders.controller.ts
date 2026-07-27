@@ -156,11 +156,11 @@ export class OrdersController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CancelOrderDto,
   ) {
-    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    const user_id = req.user?.sub ?? (req.headers['x-user-id'] as string);
     const order = await this.ordersService.cancelOrder(
       id,
       OrderActor.USER,
-      { userId },
+      { user_id },
       dto,
     );
     return {
@@ -214,25 +214,25 @@ export class AdminOrdersController {
   }
 
   /**
-   * GET /api/admin/orders/:orderId/items
+   * GET /api/admin/orders/:order_id/items
    * Returns checklist items for an order in the authenticated admin store.
    */
-  @Get(':orderId/items')
+  @Get(':order_id/items')
   @ApiOperation({
     summary: 'Get checklist items for an admin order',
     description:
       'Returns order items for the given order only when it belongs to the authenticated admin store.',
   })
-  @ApiParam({ name: 'orderId', type: Number, example: 6 })
+  @ApiParam({ name: 'order_id', type: Number, example: 6 })
   @ApiResponse({ status: 200, description: 'Order items returned' })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
   async getOrderItems(
-    @Param('orderId', ParseIntPipe) orderId: number,
+    @Param('order_id', ParseIntPipe) order_id: number,
     @Request() req,
   ) {
     const data = await this.ordersService.getAdminOrderItems(
-      orderId,
+      order_id,
       req.user?.store_id,
     );
 
@@ -244,16 +244,16 @@ export class AdminOrdersController {
   }
 
   /**
-   * PATCH /api/admin/orders/:orderId/items
+   * PATCH /api/admin/orders/:order_id/items
    * Updates the full item availability checklist for a pending order.
    */
-  @Patch(':orderId/items')
+  @Patch(':order_id/items')
   @ApiOperation({
     summary: 'Update the full item availability checklist for a pending order',
     description:
       'Uses the authenticated admin store. The request must include every item in the order.',
   })
-  @ApiParam({ name: 'orderId', type: Number, example: 1 })
+  @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiBody({ type: UpdateAdminOrderItemsDto })
   @ApiResponse({ status: 200, description: 'Order items updated successfully' })
   @ApiBadRequestResponse({
@@ -262,12 +262,12 @@ export class AdminOrdersController {
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
   async updateItems(
-    @Param('orderId', ParseIntPipe) orderId: number,
+    @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: UpdateAdminOrderItemsDto,
     @Request() req,
   ) {
     const data = await this.ordersService.updateAdminOrderItems(
-      orderId,
+      order_id,
       req.user?.store_id,
       dto,
     );
@@ -280,15 +280,15 @@ export class AdminOrdersController {
   }
 
   /**
-   * PATCH /api/admin/orders/:orderId/status
+   * PATCH /api/admin/orders/:order_id/status
    * Updates order status through the Phase 1 pickup workflow.
    */
-  @Patch(':orderId/status')
+  @Patch(':order_id/status')
   @ApiOperation({
     summary: 'Update order status through the Phase 1 pickup workflow',
     description: `${OrderStatus.PENDING} -> ${OrderStatus.CONFIRMED} -> ${OrderStatus.READY_FOR_PICKUP} -> ${OrderStatus.PICKED_UP}`,
   })
-  @ApiParam({ name: 'orderId', type: Number, example: 1 })
+  @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiBody({ type: UpdateAdminOrderStatusDto })
   @ApiResponse({ status: 200, description: 'Order status updated successfully' })
   @ApiBadRequestResponse({
@@ -297,12 +297,12 @@ export class AdminOrdersController {
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
   async updateStatus(
-    @Param('orderId', ParseIntPipe) orderId: number,
+    @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: UpdateAdminOrderStatusDto,
     @Request() req,
   ) {
     const data = await this.ordersService.updateAdminOrderStatus(
-      orderId,
+      order_id,
       req.user?.store_id,
       dto,
       req.user?.sub,
@@ -316,25 +316,25 @@ export class AdminOrdersController {
   }
 
   /**
-   * PATCH /api/admin/orders/:orderId/cancel
+   * PATCH /api/admin/orders/:order_id/cancel
    * Cancels an order for the authenticated admin store (allowed until READY_FOR_PICKUP).
    */
-  @Patch(':orderId/cancel')
+  @Patch(':order_id/cancel')
   @ApiOperation({ summary: 'Cancel an order (store)' })
-  @ApiParam({ name: 'orderId', type: Number, example: 1 })
+  @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
   @ApiBadRequestResponse({ description: 'Order cannot be cancelled in its current state' })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
   async cancelOrder(
-    @Param('orderId', ParseIntPipe) orderId: number,
+    @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: CancelOrderDto,
     @Request() req,
   ) {
     const order = await this.ordersService.cancelOrder(
-      orderId,
+      order_id,
       OrderActor.STORE,
-      { storeId: req.user?.store_id },
+      { store_id: req.user?.store_id },
       dto,
     );
 

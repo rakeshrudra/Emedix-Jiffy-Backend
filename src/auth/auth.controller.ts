@@ -45,7 +45,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Authentication successful' })
   @ApiResponse({ status: 401, description: 'Invalid or expired Firebase token' })
   async verifyToken(@Body() dto: VerifyFirebaseTokenDto) {
-    return this.authService.verifyFirebaseToken(dto.idToken);
+    return this.authService.verifyFirebaseToken(dto.id_token);
   }
 
   /**

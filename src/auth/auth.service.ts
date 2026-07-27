@@ -28,10 +28,10 @@ export class AuthService {
    * 3. Store firebase_uid for account-merge edge case handling
    * 4. Return short-lived access token + long-lived refresh token
    */
-  async verifyFirebaseToken(idToken: string) {
+  async verifyFirebaseToken(id_token: string) {
     let decodedToken: admin.auth.DecodedIdToken;
     try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
+      decodedToken = await admin.auth().verifyIdToken(id_token);
     } catch (error) {
       this.logger.error(`Firebase token verification failed: ${error.message}`);
       throw new UnauthorizedException('Invalid or expired Firebase token');
@@ -80,10 +80,10 @@ export class AuthService {
    * POST /api/auth/refresh
    * Validates the refresh token and returns a fresh access token.
    */
-  async refreshAccessToken(refreshToken: string) {
+  async refreshAccessToken(refresh_token: string) {
     let payload: any;
     try {
-      payload = await this.jwtService.verifyAsync(refreshToken, {
+      payload = await this.jwtService.verifyAsync(refresh_token, {
         secret: this.refreshSecret,
       });
     } catch {
@@ -114,8 +114,8 @@ export class AuthService {
    * PATCH /api/auth/profile
    * Updates the authenticated user's name.
    */
-  async updateProfile(userId: string, name: string) {
-    const user = await this.usersService.updateProfile(userId, { name: name.trim() });
+  async updateProfile(user_id: string, name: string) {
+    const user = await this.usersService.updateProfile(user_id, { name: name.trim() });
     return {
       success: true,
       message: 'Profile updated successfully',
@@ -130,8 +130,8 @@ export class AuthService {
   /**
    * GET /api/auth/me
    */
-  async getProfile(userId: string) {
-    const user = await this.usersService.findById(userId);
+  async getProfile(user_id: string) {
+    const user = await this.usersService.findById(user_id);
     if (!user) throw new UnauthorizedException('User not found');
     return {
       success: true,
@@ -140,7 +140,7 @@ export class AuthService {
         id: user.id,
         mobile_no: user.mobile_no,
         name: user.name ?? null,
-        created_at: user.createdAt,
+        created_at: user.created_at,
       },
     };
   }
@@ -149,8 +149,8 @@ export class AuthService {
    * PUT /api/auth/fcm-token
    * Saves/updates the device's FCM registration token for order status push notifications.
    */
-  async updateFcmToken(userId: string, fcmToken: string) {
-    await this.usersService.updateFcmToken(userId, fcmToken);
+  async updateFcmToken(user_id: string, fcm_token: string) {
+    await this.usersService.updateFcmToken(user_id, fcm_token);
     return {
       success: true,
       message: 'FCM token updated successfully',
@@ -159,14 +159,14 @@ export class AuthService {
 
   // ─── Private ────────────────────────────────────────────────────────────────
 
-  private issueTokens(userId: string, mobile_no: string) {
+  private issueTokens(user_id: string, mobile_no: string) {
     const access_token = this.jwtService.sign(
-      { sub: userId, mobile_no, type: 'access' },
+      { sub: user_id, mobile_no, type: 'access' },
       { expiresIn: '15m' },
     );
 
     const refresh_token = this.jwtService.sign(
-      { sub: userId, type: 'refresh' },
+      { sub: user_id, type: 'refresh' },
       { secret: this.refreshSecret, expiresIn: '30d' },
     );
 

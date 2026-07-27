@@ -10,5 +10,5 @@ export class ProductSearchQueryDto {
     @ApiPropertyOptional({ example: '001', description: 'Store ID' })
     @IsOptional()
     @IsString()
-    storeId?: string;
+    store_id?: string;
 }

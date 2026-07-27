@@ -5,13 +5,13 @@ import { AppDataSource } from './data-source';
 import { Store } from '../stores/entities/store.entity';
 
 type CsvStoreRow = {
-  storeId: string;
+  store_id: string;
   name: string;
   latitude: number;
   longitude: number;
-  formattedAddress: string;
-  isActive: boolean;
-  hadMissingCoordinates: boolean;
+  formatted_address: string;
+  is_active: boolean;
+  had_missing_coordinates: boolean;
 };
 
 const DEFAULT_COORDINATE = 0;
@@ -132,9 +132,9 @@ function extractCity(address: string, state: string, pincode: string): string {
 
 function normalizeRows(rows: string[][]): CsvStoreRow[] {
   return rows.map((row, index) => {
-    const [storeId, name, latitudeValue, longitudeValue, formattedAddress, isActiveValue] = row;
+    const [store_id, name, latitudeValue, longitudeValue, formattedAddress, isActiveValue] = row;
 
-    if (!storeId || !name || !formattedAddress) {
+    if (!store_id || !name || !formattedAddress) {
       throw new Error(`Invalid Storeimport.csv row ${index + 1}: expected code, name, and formatted address.`);
     }
 
@@ -143,13 +143,13 @@ function normalizeRows(rows: string[][]): CsvStoreRow[] {
     const hadMissingCoordinates = latitude === null || longitude === null;
 
     return {
-      storeId,
+      store_id: store_id,
       name,
       latitude: latitude ?? DEFAULT_COORDINATE,
       longitude: longitude ?? DEFAULT_COORDINATE,
-      formattedAddress,
-      isActive: toBoolean(isActiveValue ?? '1'),
-      hadMissingCoordinates,
+      formatted_address: formattedAddress,
+      is_active: toBoolean(isActiveValue ?? '1'),
+      had_missing_coordinates: hadMissingCoordinates,
     };
   });
 }
@@ -157,7 +157,7 @@ function normalizeRows(rows: string[][]): CsvStoreRow[] {
 async function seedStores() {
   const content = fs.readFileSync(CSV_PATH, 'utf8').replace(/^\uFEFF/, '');
   const rows = normalizeRows(parseCsv(content));
-  const missingCoordinateCount = rows.filter((row) => row.hadMissingCoordinates).length;
+  const missingCoordinateCount = rows.filter((row) => row.had_missing_coordinates).length;
 
   if (IS_DRY_RUN) {
     console.log(`Parsed ${rows.length} store row(s) from ${path.basename(CSV_PATH)}.`);
@@ -176,31 +176,31 @@ async function seedStores() {
   let updated = 0;
 
   for (const row of rows) {
-    const pincode = extractPincode(row.formattedAddress);
-    const state = extractState(row.formattedAddress);
-    const city = extractCity(row.formattedAddress, state, pincode);
+    const pincode = extractPincode(row.formatted_address);
+    const state = extractState(row.formatted_address);
+    const city = extractCity(row.formatted_address, state, pincode);
     const existing = await storeRepository.findOne({
-      where: { storeId: row.storeId },
+      where: { store_id: row.store_id },
     });
 
     const store = storeRepository.create({
       ...(existing ?? {}),
-      storeId: row.storeId,
-      emedixName: existing?.emedixName ?? row.name,
+      store_id: row.store_id,
+      emedix_name: existing?.emedix_name ?? row.name,
       name: row.name,
-      addressLine1: row.formattedAddress.slice(0, 255),
-      formattedAddress: row.formattedAddress,
+      address_line_1: row.formatted_address.slice(0, 255),
+      formatted_address: row.formatted_address,
       city,
       state,
       pincode,
       country: 'India',
       latitude: row.latitude,
       longitude: row.longitude,
-      deliveryRadiusKm: existing?.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM,
+      delivery_radius_km: existing?.delivery_radius_km ?? DEFAULT_DELIVERY_RADIUS_KM,
       phone: existing?.phone ?? null,
-      openingTime: existing?.openingTime ?? null,
-      closingTime: existing?.closingTime ?? null,
-      isActive: row.isActive,
+      opening_time: existing?.opening_time ?? null,
+      closing_time: existing?.closing_time ?? null,
+      is_active: row.is_active,
     });
 
     await storeRepository.save(store);

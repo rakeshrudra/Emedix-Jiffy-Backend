@@ -13,24 +13,24 @@ export class OrderDeliveryAddress {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @OneToOne(() => Order, (order) => order.deliveryAddress, { onDelete: 'CASCADE' })
+    @OneToOne(() => Order, (order) => order.delivery_address, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'order_id' })
     order: Order;
 
     @Column({ name: 'source_address_id', nullable: true })
-    sourceAddressId: string | null;
+    source_address_id: string | null;
 
     @Column({ name: 'label', default: 'Other' })
     label: string;
 
     @Column({ name: 'address_line_1', default: '' })
-    addressLine1: string;
+    address_line_1: string;
 
     @Column({ name: 'address_line_2', default: '' })
-    addressLine2: string;
+    address_line_2: string;
 
     @Column({ name: 'formatted_address', type: 'text' })
-    formattedAddress: string;
+    formatted_address: string;
 
     @Column()
     city: string;
@@ -50,6 +50,6 @@ export class OrderDeliveryAddress {
     @Column('decimal', { precision: 10, scale: 7 })
     longitude: number;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ name: 'created_at' })
+    created_at: Date;
 }

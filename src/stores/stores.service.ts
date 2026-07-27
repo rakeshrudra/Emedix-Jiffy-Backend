@@ -22,7 +22,7 @@ export class StoresService {
   constructor(
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
-  ) {}
+  ) { }
 
   /**
    * POST /api/stores
@@ -30,7 +30,7 @@ export class StoresService {
    */
   async create(dto: CreateStoreDto) {
     const existing = await this.storeRepository.findOne({
-      where: { storeId: dto.store_id },
+      where: { store_id: dto.store_id },
     });
     if (existing) {
       throw new ConflictException(
@@ -39,26 +39,26 @@ export class StoresService {
     }
 
     const store = this.storeRepository.create({
-      storeId: dto.store_id,
-      emedixName: dto.emedix_name,
+      store_id: dto.store_id,
+      emedix_name: dto.emedix_name,
       name: dto.name,
-      addressLine1: dto.address_line_1,
-      formattedAddress: dto.formatted_address,
+      address_line_1: dto.address_line_1,
+      formatted_address: dto.formatted_address,
       city: dto.city,
       state: dto.state,
       pincode: dto.pincode,
       country: dto.country ?? 'India',
       latitude: dto.latitude,
       longitude: dto.longitude,
-      deliveryRadiusKm: dto.delivery_radius_km ?? 5.0,
+      delivery_radius_km: dto.delivery_radius_km ?? 5.0,
       phone: dto.phone ?? null,
-      openingTime: dto.opening_time ?? null,
-      closingTime: dto.closing_time ?? null,
-      isActive: dto.is_active ?? true,
+      opening_time: dto.opening_time ?? null,
+      closing_time: dto.closing_time ?? null,
+      is_active: dto.is_active ?? true,
     });
 
     const saved = await this.storeRepository.save(store);
-    this.logger.log(`Store created: ${saved.name} (${saved.storeId})`);
+    this.logger.log(`Store created: ${saved.name} (${saved.store_id})`);
 
     return { success: true, data: this.format(saved) };
   }
@@ -125,12 +125,12 @@ export class StoresService {
     };
   }
 
-  async findStoreForAdminByStoreId(storeId: string): Promise<Store> {
+  async findStoreForAdminByStoreId(store_id: string): Promise<Store> {
     const store = await this.storeRepository.findOne({
-      where: { storeId },
+      where: { store_id: store_id },
     });
 
-    if (!store || !store.isActive) {
+    if (!store || !store.is_active) {
       throw new BadRequestException('Store is invalid or inactive');
     }
 
@@ -143,38 +143,38 @@ export class StoresService {
    * with a user-facing message otherwise. Single source of truth for this
    * check — callers (e.g. OrdersService) should not re-derive it themselves.
    */
-  async assertOrderable(storeId: string): Promise<Store> {
-    const store = await this.storeRepository.findOne({ where: { storeId } });
+  async assertOrderable(store_id: string): Promise<Store> {
+    const store = await this.storeRepository.findOne({ where: { store_id: store_id } });
 
-    if (!store || !store.isActive) {
+    if (!store || !store.is_active) {
       throw new BadRequestException('This store is currently unavailable. Please try again later.');
     }
 
     if (!this.isStoreOpen(store)) {
-      throw new BadRequestException(`Store is closed. It opens at ${store.openingTime}.`);
+      throw new BadRequestException(`Store is closed. It opens at ${store.opening_time}.`);
     }
 
     return store;
   }
 
   async assertOrderableAt(
-    storeId: string,
-    scheduledDate: string,
-    scheduleStart: string,
-    scheduleEnd: string,
+    store_id: string,
+    scheduled_date: string,
+    schedule_start: string,
+    schedule_end: string,
   ): Promise<Store> {
-    const store = await this.storeRepository.findOne({ where: { storeId } });
+    const store = await this.storeRepository.findOne({ where: { store_id: store_id } });
 
-    if (!store || !store.isActive) {
+    if (!store || !store.is_active) {
       throw new BadRequestException('This store is currently unavailable. Please try again later.');
     }
 
-    const scheduledAt = this.parseIstDateTime(scheduledDate, scheduleStart);
+    const scheduledAt = this.parseIstDateTime(scheduled_date, schedule_start);
     const now = new Date();
     const minScheduledAt = new Date(now.getTime() + 60 * 60 * 1000);
     const maxScheduledAt = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
-    const startMinutes = this.timeToMinutes(scheduleStart);
-    const endMinutes = this.timeToMinutes(scheduleEnd);
+    const startMinutes = this.timeToMinutes(schedule_start);
+    const endMinutes = this.timeToMinutes(schedule_end);
 
     if (scheduledAt.getTime() < minScheduledAt.getTime()) {
       throw new BadRequestException('Scheduled order time must be at least 1 hour from now.');
@@ -188,9 +188,9 @@ export class StoresService {
       throw new BadRequestException('schedule_end must be after schedule_start.');
     }
 
-    if (!this.isSlotWithinStoreHours(scheduleStart, scheduleEnd, store.openingTime, store.closingTime)) {
+    if (!this.isSlotWithinStoreHours(schedule_start, schedule_end, store.opening_time, store.closing_time)) {
       throw new BadRequestException(
-        `Selected slot must be between ${store.openingTime} and ${store.closingTime}.`,
+        `Selected slot must be between ${store.opening_time} and ${store.closing_time}.`,
       );
     }
 
@@ -198,7 +198,7 @@ export class StoresService {
   }
 
   isStoreOpen(store: Store): boolean {
-    return this.isStoreOpenAt(store.openingTime, store.closingTime);
+    return this.isStoreOpenAt(store.opening_time, store.closing_time);
   }
 
   assertValidCoordinates(lat: number, lng: number): void {
@@ -266,26 +266,23 @@ export class StoresService {
    * Determines if the store is currently open based on IST (UTC+5:30).
    * Returns true if opening_time and closing_time are not set (assumed always open).
    */
-  private isStoreOpenAt(openingTime: string | null, closingTime: string | null): boolean {
-    if (!openingTime || !closingTime) return true;
+  private isStoreOpenAt(opening_time: string | null, closing_time: string | null): boolean {
+    if (!opening_time || !closing_time) return true;
 
     const now = new Date();
-    // Convert UTC to IST (UTC+5:30)
     const istOffsetMs = 5.5 * 60 * 60 * 1000;
     const istNow = new Date(now.getTime() + istOffsetMs);
 
-    const [oh, om] = openingTime.split(':').map(Number);
-    const [ch, cm] = closingTime.split(':').map(Number);
+    const [oh, om] = opening_time.split(':').map(Number);
+    const [ch, cm] = closing_time.split(':').map(Number);
 
     const currentMinutes = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
     const openMinutes = oh * 60 + om;
     const closeMinutes = ch * 60 + cm;
 
     if (closeMinutes > openMinutes) {
-      // Normal day (e.g. 09:00 – 22:00)
       return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
     }
-    // Overnight (e.g. 22:00 – 02:00) — unlikely for pharmacies but handled
     return currentMinutes >= openMinutes || currentMinutes < closeMinutes;
   }
 
@@ -320,36 +317,18 @@ export class StoresService {
     return scheduledAt;
   }
 
-  private isTimeWithinStoreHours(
-    time: string,
-    openingTime: string | null,
-    closingTime: string | null,
-  ): boolean {
-    if (!openingTime || !closingTime) return true;
-
-    const selectedMinutes = this.timeToMinutes(time);
-    const openMinutes = this.timeToMinutes(openingTime);
-    const closeMinutes = this.timeToMinutes(closingTime);
-
-    if (closeMinutes > openMinutes) {
-      return selectedMinutes >= openMinutes && selectedMinutes < closeMinutes;
-    }
-
-    return selectedMinutes >= openMinutes || selectedMinutes < closeMinutes;
-  }
-
   private isSlotWithinStoreHours(
-    startTime: string,
-    endTime: string,
-    openingTime: string | null,
-    closingTime: string | null,
+    start_time: string,
+    end_time: string,
+    opening_time: string | null,
+    closing_time: string | null,
   ): boolean {
-    if (!openingTime || !closingTime) return true;
+    if (!opening_time || !closing_time) return true;
 
-    const startMinutes = this.timeToMinutes(startTime);
-    const endMinutes = this.timeToMinutes(endTime);
-    const openMinutes = this.timeToMinutes(openingTime);
-    const closeMinutes = this.timeToMinutes(closingTime);
+    const startMinutes = this.timeToMinutes(start_time);
+    const endMinutes = this.timeToMinutes(end_time);
+    const openMinutes = this.timeToMinutes(opening_time);
+    const closeMinutes = this.timeToMinutes(closing_time);
 
     if (closeMinutes > openMinutes) {
       return startMinutes >= openMinutes && endMinutes <= closeMinutes;
@@ -366,22 +345,22 @@ export class StoresService {
   private format(s: Store) {
     return {
       id: s.id,
-      store_id: s.storeId,
-      emedix_name: s.emedixName,
+      store_id: s.store_id,
+      emedix_name: s.emedix_name,
       name: s.name,
-      address_line_1: s.addressLine1,
-      formatted_address: s.formattedAddress,
+      address_line_1: s.address_line_1,
+      formatted_address: s.formatted_address,
       city: s.city,
       state: s.state,
       pincode: s.pincode,
       country: s.country,
       latitude: Number(s.latitude),
       longitude: Number(s.longitude),
-      delivery_radius_km: Number(s.deliveryRadiusKm),
+      delivery_radius_km: Number(s.delivery_radius_km),
       phone: s.phone ?? null,
-      opening_time: s.openingTime ?? null,
-      closing_time: s.closingTime ?? null,
-      is_active: s.isActive,
+      opening_time: s.opening_time ?? null,
+      closing_time: s.closing_time ?? null,
+      is_active: s.is_active,
     };
   }
 }

@@ -110,7 +110,7 @@ export class OrdersService {
     private readonly redis: Redis,
   ) { }
 
-  async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
+  async createOrder(user_id: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
     const redisKey = `${IDEMPOTENCY_PREFIX}${dto.idempotency_key}`;
     const cachedOrderId = await this.redis.get(redisKey);
@@ -126,7 +126,7 @@ export class OrdersService {
 
     // 2. DB unique index — durable backstop for race conditions
     const existing = await this.orderRepository.findOne({
-      where: { idempotencyKey: dto.idempotency_key },
+      where: { idempotency_key: dto.idempotency_key },
     });
     if (existing) {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
@@ -150,16 +150,16 @@ export class OrdersService {
 
     // 4. Delivery address must belong to the user
     const address = await this.addressesService.findOwnedAddress(
-      userId,
+      user_id,
       dto.delivery_address_id,
     );
 
     // 5. Customer must exist
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findById(user_id);
     if (!user) throw new NotFoundException('User not found');
 
     // 6. Cart is the source of truth for items — must be non-empty
-    const cart = await this.cartService.getActiveCart(userId, dto.store_id);
+    const cart = await this.cartService.getActiveCart(user_id, dto.store_id);
     if (!cart || cart.items.length === 0) {
       throw new BadRequestException('Your cart is empty for this store.');
     }
@@ -171,15 +171,15 @@ export class OrdersService {
     for (const cartItem of cart.items) {
       const product = await this.productsService.findByCode(
         dto.store_id,
-        cartItem.productCode,
+        cartItem.product_code,
       );
-      if (product) productsByCode.set(cartItem.productCode, product);
+      if (product) productsByCode.set(cartItem.product_code, product);
     }
 
     // 8. Compute totals server-side from cart item prices — never trust the client
     const subtotal = cart.items.reduce((sum, item) => {
       const effectivePrice =
-        Number(item.productDiscountPrice) || Number(item.productPrice);
+        Number(item.product_discount_price) || Number(item.product_price);
       return sum + effectivePrice * item.quantity;
     }, 0);
     const deliveryCharge = 0; // dummy for now — no delivery-fee logic yet
@@ -193,34 +193,34 @@ export class OrdersService {
     let savedOrder: Order;
 
     try {
-      const orderNumber = await this.generateOrderNumber(queryRunner.manager);
+      const order_number = await this.generateOrderNumber(queryRunner.manager);
 
       const items = cart.items.map((cartItem) => {
-        const price = Number(cartItem.productPrice);
-        const discountPrice = Number(cartItem.productDiscountPrice);
-        const product = productsByCode.get(cartItem.productCode);
+        const price = Number(cartItem.product_price);
+        const discountPrice = Number(cartItem.product_discount_price);
+        const product = productsByCode.get(cartItem.product_code);
 
         return this.orderItemRepository.create({
-          productCode: cartItem.productCode,
-          productName: cartItem.productName,
-          productCompany: product?.productCompany ?? '',
-          productType: product?.productType ?? '',
-          packagingOfMedicines: product?.packagingOfMedicines ?? '',
-          productComposition: product?.productComposition ?? '',
-          hsnCode: product?.hsnCode ?? '',
+          product_code: cartItem.product_code,
+          product_name: cartItem.product_name,
+          product_company: product?.product_company ?? '',
+          product_type: product?.product_type ?? '',
+          packaging_of_medicines: product?.packaging_of_medicines ?? '',
+          product_composition: product?.product_composition ?? '',
+          hsn_code: product?.hsn_code ?? '',
           qty: cartItem.quantity,
-          productPrice: price,
-          productDiscountPrice: discountPrice,
+          product_price: price,
+          product_discount_price: discountPrice,
           total: (discountPrice || price) * cartItem.quantity,
         });
       });
 
       const deliveryAddress = this.orderDeliveryAddressRepository.create({
-        sourceAddressId: address.id,
+        source_address_id: address.id,
         label: address.label,
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2,
-        formattedAddress: address.formattedAddress,
+        address_line_1: address.address_line_1,
+        address_line_2: address.address_line_2,
+        formatted_address: address.formatted_address,
         city: address.city,
         state: address.state,
         pincode: address.pincode,
@@ -230,20 +230,20 @@ export class OrdersService {
       });
 
       const order = this.orderRepository.create({
-        orderNumber,
-        userId,
-        storeId: dto.store_id,
+        order_number: order_number,
+        user_id: user_id,
+        store_id: dto.store_id,
         status: OrderStatus.PENDING,
-        idempotencyKey: dto.idempotency_key,
+        idempotency_key: dto.idempotency_key,
         subtotal,
-        deliveryCharge,
+        delivery_charge: deliveryCharge,
         discount,
-        totalAmount,
-        scheduledDate: dto.scheduled_date ?? null,
-        sceduleStarttime: dto.scedule_starttime ?? null,
-        scheduleEndtime: dto.schedule_endtime ?? null,
-        deliveryAddress,
-        prescriptionUrls: dto.prescription_urls
+        total_amount: totalAmount,
+        scheduled_date: dto.scheduled_date ?? null,
+        scedule_starttime: dto.scedule_starttime ?? null,
+        schedule_endtime: dto.schedule_endtime ?? null,
+        delivery_address: deliveryAddress,
+        prescription_urls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
           : '',
         items,
@@ -255,8 +255,8 @@ export class OrdersService {
         OrderStatusLog,
         this.statusLogRepository.create({
           order: { id: savedOrder.id } as Order,
-          fromStatus: null,
-          toStatus: OrderStatus.PENDING,
+          from_status: null,
+          to_status: OrderStatus.PENDING,
           actor: OrderActor.SYSTEM,
           notes: 'Order created after payment success',
         }),
@@ -272,25 +272,25 @@ export class OrdersService {
 
     // 6. Fire a notification to the customer
     this.notifyOrderStatusUpdated(
-      userId,
+      user_id,
       savedOrder.id,
       OrderStatus.PENDING,
-      savedOrder.orderNumber,
+      savedOrder.order_number,
     );
 
     // 7. Push the new order to the store's admin dashboard in real time via web sockets
     this.usersService
-      .findById(userId)
+      .findById(user_id)
       .then((user) => {
         this.ordersGateway.emitNewOrder(
-          savedOrder.storeId,
+          savedOrder.store_id,
           this.buildAdminOrderSummary(savedOrder, user),
         );
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to emit order:new for ${savedOrder.orderNumber}: ${message}`,
+          `Failed to emit order:new for ${savedOrder.order_number}: ${message}`,
         );
       });
 
@@ -306,11 +306,11 @@ export class OrdersService {
 
     // 9. Clear only the ordered store cart now that the order is placed - best-effort
     this.cartService
-      .clearByUserAndStoreId(userId, dto.store_id)
+      .clearByUserAndStoreId(user_id, dto.store_id)
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to clear cart for user ${userId} and store ${dto.store_id} after order: ${message}`,
+          `Failed to clear cart for user ${user_id} and store ${dto.store_id} after order: ${message}`,
         );
       });
 
@@ -318,13 +318,13 @@ export class OrdersService {
   }
 
   async getOrdersByUser(
-    userId: string,
+    user_id: string,
     page: number,
     limit: number,
   ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
     const [data, total] = await this.orderRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
+      where: { user_id: user_id },
+      order: { created_at: 'DESC' },
       relations: ['items'],
       skip: (page - 1) * limit,
       take: limit,
@@ -332,35 +332,35 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(orderId: number, userId: string): Promise<Order> {
+  async getOrderById(order_id: number, user_id: string): Promise<Order> {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId, userId },
-      relations: ['items', 'statusLogs'],
+      where: { id: order_id, user_id: user_id },
+      relations: ['items', 'status_logs'],
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;
   }
 
   async getAdminOrders(
-    storeId: string,
+    store_id: string,
     status?: OrderStatus,
     page = 1,
     limit = 30,
   ) {
-    const where: Partial<Order> = { storeId };
+    const where: Partial<Order> = { store_id: store_id };
     if (status) where.status = status;
 
     const [orders, total] = await this.orderRepository.findAndCount({
       where,
-      relations: ['deliveryAddress'],
-      order: { createdAt: 'DESC' },
+      relations: ['delivery_address'],
+      order: { created_at: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
-        const user = await this.usersService.findById(order.userId);
+        const user = await this.usersService.findById(order.user_id);
         return this.buildAdminOrderSummary(order, user);
       }),
     );
@@ -375,9 +375,9 @@ export class OrdersService {
     };
   }
 
-  async getAdminOrderItems(orderId: number, storeId: string) {
+  async getAdminOrderItems(order_id: number, store_id: string) {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId, storeId },
+      where: { id: order_id, store_id: store_id },
       relations: ['items'],
     });
 
@@ -387,35 +387,35 @@ export class OrdersService {
 
     return {
       order_id: order.id,
-      order_no: order.orderNumber,
+      order_no: order.order_number,
       status: order.status,
       items: items.map((item) => ({
         id: item.id,
-        product_code: item.productCode,
-        product_name: item.productName,
-        product_company: item.productCompany,
-        product_type: item.productType,
-        packaging_of_medicines: item.packagingOfMedicines,
-        product_composition: item.productComposition,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        product_company: item.product_company,
+        product_type: item.product_type,
+        packaging_of_medicines: item.packaging_of_medicines,
+        product_composition: item.product_composition,
         ordered_quantity: item.qty,
-        product_price: item.productPrice,
-        product_discount_price: item.productDiscountPrice,
+        product_price: item.product_price,
+        product_discount_price: item.product_discount_price,
         total: item.total,
-        hsn_code: item.hsnCode,
-        isAvailable: item.isAvailable,
-        confirmedQuantity: item.confirmedQuantity,
+        hsn_code: item.hsn_code,
+        is_available: item.is_available,
+        confirmed_quantity: item.confirmed_quantity,
       })),
     };
   }
 
   async updateAdminOrderItems(
-    orderId: number,
-    storeId: string,
+    order_id: number,
+    store_id: string,
     dto: UpdateAdminOrderItemsDto,
   ) {
     return this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
-        where: { id: orderId, storeId },
+        where: { id: order_id, store_id: store_id },
         relations: ['items'],
       });
 
@@ -458,26 +458,26 @@ export class OrdersService {
         const submitted = submittedById.get(item.id);
         const orderedQuantity = Number(item.qty);
 
-        if (submitted.confirmedQuantity > orderedQuantity) {
+        if (submitted.confirmed_quantity > orderedQuantity) {
           throw new BadRequestException(
-            `confirmedQuantity cannot exceed ordered quantity for order item ${item.id}.`,
+            `confirmed_quantity cannot exceed ordered quantity for order item ${item.id}.`,
           );
         }
 
-        if (!submitted.isAvailable && submitted.confirmedQuantity !== 0) {
+        if (!submitted.is_available && submitted.confirmed_quantity !== 0) {
           throw new BadRequestException(
-            `confirmedQuantity must be 0 when order item ${item.id} is unavailable.`,
+            `confirmed_quantity must be 0 when order item ${item.id} is unavailable.`,
           );
         }
 
-        if (submitted.isAvailable && submitted.confirmedQuantity < 1) {
+        if (submitted.is_available && submitted.confirmed_quantity < 1) {
           throw new BadRequestException(
-            `confirmedQuantity must be at least 1 when order item ${item.id} is available.`,
+            `confirmed_quantity must be at least 1 when order item ${item.id} is available.`,
           );
         }
 
-        item.isAvailable = submitted.isAvailable;
-        item.confirmedQuantity = submitted.confirmedQuantity;
+        item.is_available = submitted.is_available;
+        item.confirmed_quantity = submitted.confirmed_quantity;
       }
 
       const updatedItems = await manager.save(OrderItem, order.items);
@@ -487,22 +487,22 @@ export class OrdersService {
         items: updatedItems.map((item) => ({
           id: item.id,
           ordered_quantity: item.qty,
-          isAvailable: item.isAvailable,
-          confirmedQuantity: item.confirmedQuantity,
+          is_available: item.is_available,
+          confirmed_quantity: item.confirmed_quantity,
         })),
       };
     });
   }
 
   async updateAdminOrderStatus(
-    orderId: number,
-    storeId: string,
+    order_id: number,
+    store_id: string,
     dto: UpdateAdminOrderStatusDto,
-    adminId: string,
+    admin_id: string,
   ) {
     const updated = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
-        where: { id: orderId, storeId },
+        where: { id: order_id, store_id: store_id },
         relations: ['items'],
       });
 
@@ -534,24 +534,24 @@ export class OrdersService {
         OrderStatusLog,
         manager.create(OrderStatusLog, {
           order: { id: savedOrder.id } as Order,
-          fromStatus: previousStatus,
-          toStatus: targetStatus,
+          from_status: previousStatus,
+          to_status: targetStatus,
           actor: OrderActor.STORE,
-          notes: `Updated by admin ${adminId}`,
+          notes: `Updated by admin ${admin_id}`,
         }),
       );
 
       if (previousStatus === OrderStatus.PENDING && targetStatus === OrderStatus.CONFIRMED) {
-        await this.reduceProductStock(manager, storeId, order.items);
+        await this.reduceProductStock(manager, store_id, order.items);
       }
 
       return {
         order: {
           id: savedOrder.id,
-          order_no: savedOrder.orderNumber,
+          order_no: savedOrder.order_number,
           previous_status: previousStatus,
           status: savedOrder.status,
-          user_id: savedOrder.userId,
+          user_id: savedOrder.user_id,
         },
       };
     });
@@ -574,17 +574,17 @@ export class OrdersService {
   }
 
   async cancelOrder(
-    orderId: number,
+    order_id: number,
     actor: OrderActor.USER | OrderActor.STORE,
-    owner: { userId?: string; storeId?: string },
+    owner: { user_id?: string; store_id?: string },
     dto: CancelOrderDto,
   ): Promise<Order> {
     const savedOrder = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
         where: {
-          id: orderId,
-          ...(owner.userId ? { userId: owner.userId } : {}),
-          ...(owner.storeId ? { storeId: owner.storeId } : {}),
+          id: order_id,
+          ...(owner.user_id ? { user_id: owner.user_id } : {}),
+          ...(owner.store_id ? { store_id: owner.store_id } : {}),
         },
         relations: ['items'],
       });
@@ -599,71 +599,71 @@ export class OrdersService {
 
       const previousStatus = order.status;
       order.status = OrderStatus.CANCELLED;
-      order.cancelledAt = new Date();
-      order.cancellationReason = dto.reason ?? '';
+      order.cancelled_at = new Date();
+      order.cancellation_reason = dto.reason ?? '';
 
       const savedOrder = await manager.save(Order, order);
       await manager.save(
         OrderStatusLog,
         manager.create(OrderStatusLog, {
           order: { id: savedOrder.id } as Order,
-          fromStatus: previousStatus,
-          toStatus: OrderStatus.CANCELLED,
+          from_status: previousStatus,
+          to_status: OrderStatus.CANCELLED,
           actor,
           notes: dto.reason ?? '',
         }),
       );
 
       if (RESTORE_STOCK_STATES.includes(previousStatus)) {
-        await this.restoreProductStock(manager, savedOrder.storeId, order.items);
+        await this.restoreProductStock(manager, savedOrder.store_id, order.items);
       }
 
       this.logger.log(
-        `Order ${savedOrder.orderNumber}: ${previousStatus} → CANCELLED (${actor})`,
+        `Order ${savedOrder.order_number}: ${previousStatus} → CANCELLED (${actor})`,
       );
 
       return savedOrder;
     });
 
     this.notifyOrderStatusUpdated(
-      savedOrder.userId,
+      savedOrder.user_id,
       savedOrder.id,
       OrderStatus.CANCELLED,
-      savedOrder.orderNumber,
+      savedOrder.order_number,
     );
 
     return savedOrder;
   }
 
-  async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {
+  async getOrderInvoice(order_id: number, user_id: string): Promise<Invoice> {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId },
+      where: { id: order_id },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.userId !== userId) throw new ForbiddenException('Access denied');
+    if (order.user_id !== user_id) throw new ForbiddenException('Access denied');
 
     const invoice = await this.invoicesService.findByOrderNumber(
-      order.orderNumber,
+      order.order_number,
     );
     if (!invoice) throw new NotFoundException('Invoice not ready yet');
 
     return invoice;
   }
 
-  async fetchPendingOrders(storeId: string): Promise<Order[]> {
-    const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
+  async fetchPendingOrders(store_id: string): Promise<Order[]> {
+    const where: Partial<Order> = { status: OrderStatus.PENDING, store_id: store_id };
 
     const orders = await this.orderRepository.find({
       where,
-      relations: ['items', 'deliveryAddress'],
-      order: { createdAt: 'ASC' },
+      relations: ['items', 'delivery_address'],
+      order: { created_at: 'ASC' },
     });
 
     if (orders.length > 0) {
       await this.orderRepository
         .createQueryBuilder()
         .update(Order)
-        .set({ erpFetchedAt: new Date() })
+        .set({ erp_fetched_at: new Date() })
         .whereInIds(orders.map((o) => o.id))
         .execute();
     }
@@ -672,18 +672,18 @@ export class OrdersService {
   }
 
   async applyErpStatusUpdate(
-    orderNumber: string,
-    newStatus: string,
-    invoiceUrl?: string,
-    invoiceNumber?: string,
+    order_number: string,
+    new_status: string,
+    invoice_url?: string,
+    invoice_number?: string,
     notes?: string,
   ): Promise<Order> {
     const order = await this.orderRepository.findOne({
-      where: { orderNumber },
+      where: { order_number: order_number },
     });
-    if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
+    if (!order) throw new NotFoundException(`Order not found: ${order_number}`);
 
-    const targetStatus = newStatus.toUpperCase() as OrderStatus;
+    const targetStatus = new_status.toUpperCase() as OrderStatus;
 
     if (targetStatus !== OrderStatus.FAILED) {
       const expectedNext = VALID_ERP_TRANSITIONS[order.status];
@@ -697,8 +697,8 @@ export class OrdersService {
     const previousStatus = order.status;
     order.status = targetStatus;
 
-    if (invoiceUrl) order.invoiceUrl = invoiceUrl;
-    if (invoiceNumber) order.invoiceNumber = invoiceNumber;
+    if (invoice_url) order.invoice_url = invoice_url;
+    if (invoice_number) order.invoice_number = invoice_number;
 
     const updated = await this.orderRepository.save(order);
     await this.logTransition(
@@ -710,7 +710,7 @@ export class OrdersService {
     );
 
     this.logger.log(
-      `Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
+      `Order ${order_number}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
     );
     return updated;
   }
@@ -719,21 +719,21 @@ export class OrdersService {
 
   private async reduceProductStock(
     manager: EntityManager,
-    storeId: string,
+    store_id: string,
     items: OrderItem[],
   ): Promise<void> {
     for (const item of items) {
-      const quantity = Number(item.confirmedQuantity) || 0;
+      const quantity = Number(item.confirmed_quantity) || 0;
       if (quantity <= 0) continue;
 
       await manager
         .createQueryBuilder()
         .update(Product)
         .set({
-          productStock: () => 'GREATEST(productStock - :quantity, 0)',
+          product_stock: () => 'GREATEST(product_stock - :quantity, 0)',
         })
-        .where('storeId = :storeId', { storeId })
-        .andWhere('productCode = :productCode', { productCode: item.productCode })
+        .where('store_id = :store_id', { store_id })
+        .andWhere('product_code = :product_code', { product_code: item.product_code })
         .setParameters({ quantity })
         .execute();
     }
@@ -741,21 +741,21 @@ export class OrdersService {
 
   private async restoreProductStock(
     manager: EntityManager,
-    storeId: string,
+    store_id: string,
     items: OrderItem[],
   ): Promise<void> {
     for (const item of items) {
-      const quantity = Number(item.confirmedQuantity) || 0;
+      const quantity = Number(item.confirmed_quantity) || 0;
       if (quantity <= 0) continue;
 
       await manager
         .createQueryBuilder()
         .update(Product)
         .set({
-          productStock: () => 'productStock + :quantity',
+          product_stock: () => 'product_stock + :quantity',
         })
-        .where('storeId = :storeId', { storeId })
-        .andWhere('productCode = :productCode', { productCode: item.productCode })
+        .where('store_id = :store_id', { store_id })
+        .andWhere('product_code = :product_code', { product_code: item.product_code })
         .setParameters({ quantity })
         .execute();
     }
@@ -768,14 +768,14 @@ export class OrdersService {
 
     const lastOrder = await manager
       .createQueryBuilder(Order, 'order')
-      .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('order.orderNumber', 'DESC')
+      .where('order.order_number LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('order.order_number', 'DESC')
       .setLock('pessimistic_write')
       .getOne();
 
     let seq = 1;
     if (lastOrder) {
-      const parts = lastOrder.orderNumber.split('-');
+      const parts = lastOrder.order_number.split('-');
       const lastSeq = parseInt(parts[parts.length - 1], 10);
       if (!isNaN(lastSeq)) seq = lastSeq + 1;
     }
@@ -784,16 +784,16 @@ export class OrdersService {
   }
 
   private async logTransition(
-    orderId: number,
-    fromStatus: OrderStatus | null,
-    toStatus: OrderStatus,
+    order_id: number,
+    from_status: OrderStatus | null,
+    to_status: OrderStatus,
     actor: OrderActor,
     notes?: string,
   ): Promise<void> {
     const log = this.statusLogRepository.create({
-      order: { id: orderId } as Order,
-      fromStatus: fromStatus ?? null,
-      toStatus,
+      order: { id: order_id } as Order,
+      from_status: from_status ?? null,
+      to_status: to_status,
       actor,
       notes: notes ?? '',
     });
@@ -803,9 +803,9 @@ export class OrdersService {
   private formatAdminDeliveryAddress(address: OrderDeliveryAddress) {
     return {
       label: address.label,
-      address_line_1: address.addressLine1,
-      address_line_2: address.addressLine2,
-      formatted_address: address.formattedAddress,
+      address_line_1: address.address_line_1,
+      address_line_2: address.address_line_2,
+      formatted_address: address.formatted_address,
       city: address.city,
       state: address.state,
       pincode: address.pincode,
@@ -825,20 +825,20 @@ export class OrdersService {
   ): AdminOrderSummary {
     return {
       order_id: order.id,
-      order_no: order.orderNumber,
-      store_id: order.storeId,
+      order_no: order.order_number,
+      store_id: order.store_id,
       customer_name: user?.name ?? '',
       customer_phone: user?.mobile_no ?? '',
-      delivery_address: order.deliveryAddress
-        ? this.formatAdminDeliveryAddress(order.deliveryAddress)
+      delivery_address: order.delivery_address
+        ? this.formatAdminDeliveryAddress(order.delivery_address)
         : null,
       subtotal: this.formatMoney(order.subtotal),
       discount: this.formatMoney(order.discount),
-      total_amount: this.formatMoney(order.totalAmount),
-      scheduled_date: order.scheduledDate,
-      scedule_starttime: order.sceduleStarttime,
-      schedule_endtime: order.scheduleEndtime,
-      created_at: order.createdAt,
+      total_amount: this.formatMoney(order.total_amount),
+      scheduled_date: order.scheduled_date,
+      scedule_starttime: order.scedule_starttime,
+      schedule_endtime: order.schedule_endtime,
+      created_at: order.created_at,
       status: order.status,
     };
   }
@@ -852,7 +852,7 @@ export class OrdersService {
 
     for (const item of items) {
       const orderedQuantity = Number(item.qty);
-      const confirmedQuantity = Number(item.confirmedQuantity);
+      const confirmedQuantity = Number(item.confirmed_quantity);
 
       if (confirmedQuantity < 0 || confirmedQuantity > orderedQuantity) {
         throw new BadRequestException(
@@ -860,7 +860,7 @@ export class OrdersService {
         );
       }
 
-      if (item.isAvailable) {
+      if (item.is_available) {
         if (confirmedQuantity < 1) {
           throw new BadRequestException(
             `Available order item ${item.id} must have a confirmed quantity.`,
@@ -882,10 +882,10 @@ export class OrdersService {
   }
 
   private notifyOrderStatusUpdated(
-    userId: string,
-    orderId: number,
+    user_id: string,
+    order_id: number,
     status: OrderStatus,
-    orderNumber: string,
+    order_number: string,
   ): void {
     const messages: Partial<Record<OrderStatus, string>> = {
       [OrderStatus.PENDING]: 'Your order has been placed successfully.',
@@ -900,15 +900,15 @@ export class OrdersService {
 
     // Best-effort, fire-and-forget — must never affect the status-update response.
     this.notificationsService
-      .sendOrderStatusUpdate(userId, `Order ${orderNumber}`, message, {
-        orderId,
-        orderNumber,
+      .sendOrderStatusUpdate(user_id, `Order ${order_number}`, message, {
+        order_id: order_id,
+        order_number: order_number,
         status,
       })
       .catch((err) => {
         const message2 = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Push notification failed for user ${userId}, order ${orderNumber}: ${message2}`,
+          `Push notification failed for user ${user_id}, order ${order_number}: ${message2}`,
         );
       });
   }

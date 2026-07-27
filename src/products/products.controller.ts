@@ -60,7 +60,7 @@ export class ProductsController {
   }
 
   /**
-   * GET /api/products/search?q=paracetamol&storeId=001
+   * GET /api/products/search?q=paracetamol&store_id=001
    * Searches in-stock, enabled products by name, code, company, or composition.
    */
   @Get('search')
@@ -87,9 +87,9 @@ export class ProductsController {
   @ApiResponse({ status: 404, description: 'Product not found' })
   async getProductByCode(
     @Param('code') code: string,
-    @Query('store_id') storeId: string,
+    @Query('store_id') store_id: string,
   ) {
-    const product = await this.productsService.findByCode(storeId, code);
+    const product = await this.productsService.findByCode(store_id, code);
     if (!product) {
       throw new NotFoundException('Product not found');
     }

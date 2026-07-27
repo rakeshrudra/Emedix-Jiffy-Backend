@@ -79,7 +79,7 @@ export class MapsService {
   private readonly autocompleteUrl = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
   private readonly placeDetailsUrl = 'https://maps.googleapis.com/maps/api/place/details/json';
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async reverseGeocode(latitude: number, longitude: number): Promise<GeocodeResult> {
     this.assertValidCoordinates(latitude, longitude);
@@ -210,7 +210,6 @@ export class MapsService {
       get('sublocality_level_1') ||
       '';
 
-    // Best street-level field for address_line_2
     const address_line_2 =
       get('sublocality_level_1') ||
       get('sublocality') ||

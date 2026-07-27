@@ -16,7 +16,7 @@ import {
  * the live table those use.
  */
 @Entity('products_swil')
-@Unique(['storeId', 'productCode'])
+@Unique(['store_id', 'product_code'])
 export class ProductSwil {
     @ApiProperty({ example: 1 })
     @PrimaryGeneratedColumn()
@@ -24,66 +24,66 @@ export class ProductSwil {
 
     @ApiProperty({ example: '001' })
     @Column({ name: 'store_id' })
-    storeId: string;
+    store_id: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @Index()
-    @Column()
-    productName: string;
+    @Column({ name: 'product_name' })
+    product_name: string;
 
     @ApiProperty({ example: 'MED10001' })
-    @Column()
-    productCode: string;
+    @Column({ name: 'product_code' })
+    product_code: string;
 
     @ApiProperty({ example: 'Cipla Ltd' })
-    @Column()
-    productCompany: string;
+    @Column({ name: 'product_company' })
+    product_company: string;
 
     @ApiProperty({ example: '3004' })
-    @Column()
-    hsnCode: string;
+    @Column({ name: 'hsn_code' })
+    hsn_code: string;
 
     @ApiProperty({ example: 'no' })
-    @Column()
-    prescriptionRequired: string;
+    @Column({ name: 'prescription_required' })
+    prescription_required: string;
 
     @ApiProperty({ example: '25.00' })
-    @Column()
-    productPrice: string;
+    @Column({ name: 'product_price' })
+    product_price: string;
 
     @ApiProperty({ example: '22.00' })
-    @Column()
-    productDiscountPrice: string;
+    @Column({ name: 'product_discount_price' })
+    product_discount_price: string;
 
     @ApiProperty({ example: 'Tablet' })
-    @Column()
-    productType: string;
+    @Column({ name: 'product_type' })
+    product_type: string;
 
     @ApiProperty({ example: '10 Tablets per Strip' })
-    @Column()
-    packagingOfMedicines: string;
+    @Column({ name: 'packaging_of_medicines' })
+    packaging_of_medicines: string;
 
     @ApiProperty({ example: 'Paracetamol 500mg' })
-    @Column({ type: 'text' })
-    productComposition: string;
+    @Column({ name: 'product_composition', type: 'text' })
+    product_composition: string;
 
     @ApiProperty({ example: 'Enable' })
     @Column()
     status: string;
 
     @ApiProperty({ example: '250' })
-    @Column()
-    productStock: string;
+    @Column({ name: 'product_stock' })
+    product_stock: string;
 
     @ApiProperty({ example: '2026-02-27 10:30:00' })
-    @Column()
-    lastUpdated: string;
+    @Column({ name: 'last_updated' })
+    last_updated: string;
 
     @ApiProperty()
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ name: 'created_at' })
+    created_at: Date;
 
     @ApiProperty()
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @UpdateDateColumn({ name: 'updated_at' })
+    updated_at: Date;
 }

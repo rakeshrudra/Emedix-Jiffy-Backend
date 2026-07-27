@@ -1,18 +1,18 @@
 import * as XLSX from 'xlsx';
 
 export interface ParsedInventoryRow {
-  productCode: string;
-  productName: string;
-  productType: string;
-  productStock: number;
-  productPrice: number;
-  productCompany: string;
+  product_code: string;
+  product_name: string;
+  product_type: string;
+  product_stock: number;
+  product_price: number;
+  product_company: string;
 }
 
 export interface InventoryParseResult {
   rows: ParsedInventoryRow[];
   warnings: string[];
-  fatalError: string | null;
+  fatal_error: string | null;
 }
 
 const REQUIRED_HEADERS = [
@@ -32,13 +32,13 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
     return {
       rows: [],
       warnings: [],
-      fatalError: 'File could not be read. Upload a valid .xls file.',
+      fatal_error: 'File could not be read. Upload a valid .xls file.',
     };
   }
 
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) {
-    return { rows: [], warnings: [], fatalError: 'The uploaded file has no sheets.' };
+    return { rows: [], warnings: [], fatal_error: 'The uploaded file has no sheets.' };
   }
 
   const rawRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
@@ -54,7 +54,7 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
     return {
       rows: [],
       warnings: [],
-      fatalError: 'Could not find the header row (expected a "Code" column).',
+      fatal_error: 'Could not find the header row (expected a "Code" column).',
     };
   }
 
@@ -71,7 +71,7 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
     return {
       rows: [],
       warnings: [],
-      fatalError: `Missing required column(s): ${missingHeaders.join(', ')}`,
+      fatal_error: `Missing required column(s): ${missingHeaders.join(', ')}`,
     };
   }
 
@@ -84,65 +84,65 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
     if (!raw) continue;
 
     const rowNum = i + 1;
-    const productCode = String(raw[columnIndex['Code']] ?? '').trim();
-    const productName = String(raw[columnIndex['Product Name']] ?? '').trim();
-    const productType = String(raw[columnIndex['Unit']] ?? '').trim();
-    const productCompany = String(raw[columnIndex['Company']] ?? '').trim();
+    const product_code = String(raw[columnIndex['Code']] ?? '').trim();
+    const product_name = String(raw[columnIndex['Product Name']] ?? '').trim();
+    const product_type = String(raw[columnIndex['Unit']] ?? '').trim();
+    const product_company = String(raw[columnIndex['Company']] ?? '').trim();
     const stockRaw = raw[columnIndex['Current Stock']];
     const priceRaw = raw[columnIndex['M.R.P.']];
 
     const isBlankRow =
-      !productCode &&
-      !productName &&
-      !productType &&
-      !productCompany &&
+      !product_code &&
+      !product_name &&
+      !product_type &&
+      !product_company &&
       String(stockRaw ?? '').trim() === '' &&
       String(priceRaw ?? '').trim() === '';
     if (isBlankRow) continue;
 
-    if (!productCode) {
+    if (!product_code) {
       warnings.push(
         `Row ${rowNum}: missing Code — this record was not uploaded.`,
       );
       continue;
     }
-    if (!productName) {
+    if (!product_name) {
       warnings.push(
         `Row ${rowNum}: missing Product Name — this record was not uploaded.`,
       );
       continue;
     }
-    if (seenCodes.has(productCode)) {
+    if (seenCodes.has(product_code)) {
       warnings.push(
-        `Row ${rowNum}: duplicate Code "${productCode}" (first seen on row ${seenCodes.get(productCode)}) — this record was not uploaded, the first one was kept.`,
+        `Row ${rowNum}: duplicate Code "${product_code}" (first seen on row ${seenCodes.get(product_code)}) — this record was not uploaded, the first one was kept.`,
       );
       continue;
     }
 
-    const productStock = Number(stockRaw);
-    if (stockRaw === '' || Number.isNaN(productStock)) {
+    const product_stock = Number(stockRaw);
+    if (stockRaw === '' || Number.isNaN(product_stock)) {
       warnings.push(
         `Row ${rowNum}: Current Stock "${stockRaw}" is not a number — this record was not uploaded.`,
       );
       continue;
     }
 
-    const productPrice = Number(priceRaw);
-    if (priceRaw === '' || Number.isNaN(productPrice)) {
+    const product_price = Number(priceRaw);
+    if (priceRaw === '' || Number.isNaN(product_price)) {
       warnings.push(
         `Row ${rowNum}: M.R.P. "${priceRaw}" is not a number — this record was not uploaded.`,
       );
       continue;
     }
 
-    seenCodes.set(productCode, rowNum);
+    seenCodes.set(product_code, rowNum);
     rows.push({
-      productCode,
-      productName,
-      productType,
-      productStock,
-      productPrice,
-      productCompany,
+      product_code,
+      product_name,
+      product_type,
+      product_stock,
+      product_price,
+      product_company,
     });
   }
 
@@ -150,9 +150,9 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
     return {
       rows: [],
       warnings,
-      fatalError: 'No valid product rows found in the file.',
+      fatal_error: 'No valid product rows found in the file.',
     };
   }
 
-  return { rows, warnings, fatalError: null };
+  return { rows, warnings, fatal_error: null };
 }

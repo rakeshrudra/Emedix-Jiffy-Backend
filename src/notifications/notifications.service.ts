@@ -10,8 +10,8 @@ const UNREGISTERED_ERROR_CODES = new Set([
 ]);
 
 export interface OrderPushPayload {
-  orderId: number;
-  orderNumber: string;
+  order_id: number;
+  order_number: string;
   status: string;
 }
 
@@ -26,13 +26,13 @@ export class NotificationsService {
    * affect the order status update it's reporting on.
    */
   async sendOrderStatusUpdate(
-    userId: string,
+    user_id: string,
     title: string,
     body: string,
     payload: OrderPushPayload,
   ): Promise<void> {
     try {
-      const user = await this.usersService.findById(userId);
+      const user = await this.usersService.findById(user_id);
       if (!user?.fcm_token) return;
 
       await admin.messaging().send({
@@ -40,8 +40,8 @@ export class NotificationsService {
         notification: { title, body },
         data: {
           type: 'ORDER_STATUS_UPDATE',
-          orderId: String(payload.orderId),
-          orderNumber: payload.orderNumber,
+          order_id: String(payload.order_id),
+          order_number: payload.order_number,
           status: payload.status,
         },
         android: { priority: 'high' },
@@ -51,13 +51,13 @@ export class NotificationsService {
       const code = error?.code as string | undefined;
 
       if (code && UNREGISTERED_ERROR_CODES.has(code)) {
-        this.logger.warn(`Dropping dead FCM token for user ${userId} (${code})`);
-        await this.usersService.clearFcmToken(userId).catch(() => { });
+        this.logger.warn(`Dropping dead FCM token for user ${user_id} (${code})`);
+        await this.usersService.clearFcmToken(user_id).catch(() => { });
         return;
       }
 
       this.logger.warn(
-        `Push notification failed for user ${userId}: ${error?.message ?? error}`,
+        `Push notification failed for user ${user_id}: ${error?.message ?? error}`,
       );
     }
   }

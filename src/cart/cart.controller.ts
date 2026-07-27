@@ -72,12 +72,12 @@ export class CartController {
   }
 
   /**
-   * PATCH /api/cart/items/:productCode
+   * PATCH /api/cart/items/:product_code
    * Updates item quantity (0 removes the item).
    */
-  @Patch('items/:productCode')
+  @Patch('items/:product_code')
   @ApiOperation({ summary: 'Update item quantity (0 removes the item)' })
-  @ApiParam({ name: 'productCode', description: 'ERP product code' })
+  @ApiParam({ name: 'product_code', description: 'ERP product code' })
   @ApiQuery({
     name: 'store_id',
     required: true,
@@ -87,26 +87,26 @@ export class CartController {
   @ApiResponse({ status: 404, description: 'Cart or item not found' })
   async updateItem(
     @Req() req: any,
-    @Param('productCode') productCode: string,
+    @Param('product_code') product_code: string,
     @Body() dto: UpdateItemDto,
     @Query() query: CartStoreQueryDto,
   ) {
     return this.cartService.updateItem(
       this.getUserId(req),
-      productCode,
+      product_code,
       dto,
       query.store_id,
     );
   }
 
   /**
-   * DELETE /api/cart/items/:productCode
+   * DELETE /api/cart/items/:product_code
    * Removes a single item from the cart.
    */
-  @Delete('items/:productCode')
+  @Delete('items/:product_code')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a single item from cart' })
-  @ApiParam({ name: 'productCode', description: 'ERP product code' })
+  @ApiParam({ name: 'product_code', description: 'ERP product code' })
   @ApiQuery({
     name: 'store_id',
     required: true,
@@ -116,12 +116,12 @@ export class CartController {
   @ApiResponse({ status: 404, description: 'Cart or item not found' })
   async removeItem(
     @Req() req: any,
-    @Param('productCode') productCode: string,
+    @Param('product_code') product_code: string,
     @Query() query: CartStoreQueryDto,
   ) {
     return this.cartService.removeItem(
       this.getUserId(req),
-      productCode,
+      product_code,
       query.store_id,
     );
   }
