@@ -7,6 +7,7 @@ import { OrdersGateway } from './orders.gateway';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
+import { Store } from '../stores/entities/store.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { ProductsModule } from '../products/products.module';
@@ -19,7 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Order, OrderItem, OrderDeliveryAddress]),
+        TypeOrmModule.forFeature([Order, OrderItem, OrderDeliveryAddress, Store]),
         JwtModule.register({}),
         InvoicesModule,
         ProductsModule,
