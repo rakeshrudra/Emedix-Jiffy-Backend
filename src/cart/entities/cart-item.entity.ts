@@ -18,20 +18,20 @@ export class CartItem {
   cart: Cart;
 
   @Column({ name: 'product_code' })
-  productCode: string;
+  product_code: string;
 
   @Column({ name: 'product_name' })
-  productName: string;
+  product_name: string;
 
   @Column({ name: 'product_price', type: 'decimal', precision: 10, scale: 2 })
-  productPrice: number;
+  product_price: number;
 
   @Column({ name: 'product_discount_price', type: 'decimal', precision: 10, scale: 2, default: 0 })
-  productDiscountPrice: number;
+  product_discount_price: number;
 
   @Column({ type: 'int' })
   quantity: number;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 }

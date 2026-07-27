@@ -46,8 +46,8 @@ export class AddressesController {
   @ApiResponse({ status: 201, description: 'Address saved successfully' })
   @ApiResponse({ status: 400, description: 'Address limit reached or duplicate address' })
   async saveAddress(@Req() req: any, @Body() dto: SaveAddressDto) {
-    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
-    return this.addressesService.saveAddress(userId, dto);
+    const user_id = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    return this.addressesService.saveAddress(user_id, dto);
   }
 
   /**
@@ -58,8 +58,8 @@ export class AddressesController {
   @ApiOperation({ summary: 'List all saved addresses (default first)' })
   @ApiResponse({ status: 200, description: 'Address list returned' })
   async getMyAddresses(@Req() req: any) {
-    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
-    return this.addressesService.getUserAddresses(userId);
+    const user_id = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    return this.addressesService.getUserAddresses(user_id);
   }
 
   /**
@@ -76,8 +76,8 @@ export class AddressesController {
     @Param('id') id: string,
     @Body() dto: UpdateAddressDto,
   ) {
-    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
-    return this.addressesService.updateAddress(userId, id, dto);
+    const user_id = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    return this.addressesService.updateAddress(user_id, id, dto);
   }
 
   /**
@@ -91,7 +91,7 @@ export class AddressesController {
   @ApiResponse({ status: 200, description: 'Address deleted' })
   @ApiResponse({ status: 404, description: 'Address not found' })
   async removeAddress(@Req() req: any, @Param('id') id: string) {
-    const userId = req.user?.sub ?? (req.headers['x-user-id'] as string);
-    return this.addressesService.removeAddress(userId, id);
+    const user_id = req.user?.sub ?? (req.headers['x-user-id'] as string);
+    return this.addressesService.removeAddress(user_id, id);
   }
 }

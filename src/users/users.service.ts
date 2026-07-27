@@ -27,8 +27,16 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
-  async updateProfile(userId: string, fields: Partial<Pick<User, 'name' | 'firebase_uid'>>): Promise<User> {
-    await this.userRepository.update(userId, fields);
-    return this.userRepository.findOne({ where: { id: userId } });
+  async updateProfile(user_id: string, fields: Partial<Pick<User, 'name' | 'firebase_uid'>>): Promise<User> {
+    await this.userRepository.update(user_id, fields);
+    return this.userRepository.findOne({ where: { id: user_id } });
+  }
+
+  async updateFcmToken(user_id: string, fcm_token: string): Promise<void> {
+    await this.userRepository.update(user_id, { fcm_token: fcm_token });
+  }
+
+  async clearFcmToken(user_id: string): Promise<void> {
+    await this.userRepository.update(user_id, { fcm_token: null });
   }
 }

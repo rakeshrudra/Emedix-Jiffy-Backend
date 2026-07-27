@@ -15,14 +15,14 @@ export class Admin {
   username: string;
 
   @Column({ name: 'password_hash' })
-  passwordHash: string;
+  password_hash: string;
 
   @Column({ name: 'store_id' })
-  storeId: string;
+  store_id: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at' })
+  updated_at: Date;
 }

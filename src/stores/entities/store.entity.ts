@@ -6,19 +6,19 @@ export class Store {
   id: string;
 
   @Column({ name: 'store_id', unique: true })
-  storeId: string;
+  store_id: string;
 
   @Column({ name: 'emedix_name' })
-  emedixName: string;
+  emedix_name: string;
 
   @Column()
   name: string;
 
   @Column({ name: 'address_line_1', default: '' })
-  addressLine1: string;
+  address_line_1: string;
 
   @Column({ name: 'formatted_address', type: 'text' })
-  formattedAddress: string;
+  formatted_address: string;
 
   @Column()
   city: string;
@@ -41,17 +41,17 @@ export class Store {
   longitude: number;
 
   @Column('decimal', { name: 'delivery_radius_km', precision: 5, scale: 2, default: 5.0 })
-  deliveryRadiusKm: number;
+  delivery_radius_km: number;
 
   @Column({ type: 'varchar', length: 10, nullable: true })
   phone: string | null;
 
   @Column({ name: 'opening_time', type: 'time', nullable: true })
-  openingTime: string | null;
+  opening_time: string | null;
 
   @Column({ name: 'closing_time', type: 'time', nullable: true })
-  closingTime: string | null;
+  closing_time: string | null;
 
   @Column({ name: 'is_active', default: true })
-  isActive: boolean;
+  is_active: boolean;
 }

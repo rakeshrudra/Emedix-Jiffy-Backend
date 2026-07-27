@@ -63,19 +63,19 @@ export class EmedixWebhookService {
     }
 
     // ── Pending Orders ──
-    async handlePendingOrders(storeId: string) {
-        const orders = await this.ordersService.fetchPendingOrders(storeId);
+    async handlePendingOrders(store_id: string) {
+        const orders = await this.ordersService.fetchPendingOrders(store_id);
         const usersById = new Map<string, User>();
         for (const order of orders) {
-            if (usersById.has(order.userId)) continue;
-            const user = await this.usersService.findById(order.userId);
-            if (user) usersById.set(order.userId, user);
+            if (usersById.has(order.user_id)) continue;
+            const user = await this.usersService.findById(order.user_id);
+            if (user) usersById.set(order.user_id, user);
         }
 
         return {
             count: orders.length,
             orders: orders.map((o) =>
-                this.formatOrderForErp(o, usersById.get(o.userId)),
+                this.formatOrderForErp(o, usersById.get(o.user_id)),
             ),
         };
     }
@@ -110,41 +110,41 @@ export class EmedixWebhookService {
 
     // ─── Private helpers ────────────────────────────────────────────────────────
     private formatOrderForErp(order: Order, user?: User) {
-        const address = order.deliveryAddress;
+        const address = order.delivery_address;
 
         return {
-            order_no: order.orderNumber,
-            store_id: order.storeId,
+            order_no: order.order_number,
+            store_id: order.store_id,
             customer_name: user?.name ?? '',
             customer_phone: user?.mobile_no ?? '',
             delivery_address: address
                 ? {
-                      label: address.label,
-                      address_line_1: address.addressLine1,
-                      address_line_2: address.addressLine2,
-                      formatted_address: address.formattedAddress,
-                      city: address.city,
-                      state: address.state,
-                      pincode: address.pincode,
-                      country: address.country,
-                      latitude: address.latitude,
-                      longitude: address.longitude,
-                  }
+                    label: address.label,
+                    address_line_1: address.address_line_1,
+                    address_line_2: address.address_line_2,
+                    formatted_address: address.formatted_address,
+                    city: address.city,
+                    state: address.state,
+                    pincode: address.pincode,
+                    country: address.country,
+                    latitude: address.latitude,
+                    longitude: address.longitude,
+                }
                 : null,
             subtotal: order.subtotal,
             discount: order.discount,
-            total_amount: order.totalAmount,
-            created_at: order.createdAt,
+            total_amount: order.total_amount,
+            created_at: order.created_at,
             items: order.items.map((i) => ({
-                product_code: i.productCode,
-                product_name: i.productName,
-                product_price: i.productPrice,
-                product_discount_price: i.productDiscountPrice,
-                packaging_of_medicines: i.packagingOfMedicines || null,
-                product_composition: i.productComposition || null,
-                product_type: i.productType || null,
-                product_company: i.productCompany || null,
-                hsn_code: i.hsnCode || null,
+                product_code: i.product_code,
+                product_name: i.product_name,
+                product_price: i.product_price,
+                product_discount_price: i.product_discount_price,
+                packaging_of_medicines: i.packaging_of_medicines || null,
+                product_composition: i.product_composition || null,
+                product_type: i.product_type || null,
+                product_company: i.product_company || null,
+                hsn_code: i.hsn_code || null,
                 qty: i.qty,
                 total: i.total,
             })),

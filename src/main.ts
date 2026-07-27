@@ -11,9 +11,11 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // CORS setup
-  const allowedOrigins = [process.env.ADMIN_DASHBOARD_URL].filter(Boolean);
+  const allowedOrigins = [
+    process.env.ADMIN_DASHBOARD_URL, 'http://localhost:5173',
+  ].filter(Boolean);
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+    origin: allowedOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

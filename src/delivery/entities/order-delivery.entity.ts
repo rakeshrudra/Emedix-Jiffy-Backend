@@ -11,36 +11,36 @@ import {
 import { Order } from '../../orders/entities/order.entity';
 
 @Entity('order_deliveries')
-@Index('UQ_order_deliveries_order_id', ['orderId'], { unique: true })
+@Index('UQ_order_deliveries_order_id', ['order_id'], { unique: true })
 export class OrderDelivery {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ name: 'order_id' })
-  orderId: number;
+  order_id: number;
 
   @OneToOne(() => Order, (order) => order.delivery, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order: Order;
 
   @Column({ name: 'delivery_partner_name', length: 255 })
-  deliveryPartnerName: string;
+  delivery_partner_name: string;
 
   @Column({ name: 'delivery_partner_phone', length: 255 })
-  deliveryPartnerPhone: string;
+  delivery_partner_phone: string;
 
   @Column({ name: 'estimated_delivery_time', type: 'datetime', nullable: true })
-  estimatedDeliveryTime: Date;
+  estimated_delivery_time: Date;
 
   @Column({ name: 'dispatched_at', type: 'datetime' })
-  dispatchedAt: Date;
+  dispatched_at: Date;
 
   @Column({ name: 'delivered_at', type: 'datetime', nullable: true })
-  deliveredAt: Date;
+  delivered_at: Date;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updated_at: Date;
 }

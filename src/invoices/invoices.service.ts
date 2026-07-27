@@ -15,42 +15,42 @@ export class InvoicesService {
     ) { }
 
     /**
-     * Looked up by orderNo — used by OrdersService for the user-facing
+     * Looked up by order_no — used by OrdersService for the user-facing
      * GET /orders/:id/invoice endpoint.
      */
     async findByOrderNumber(orderNo: string): Promise<Invoice | null> {
         return this.invoiceRepository.findOne({
-            where: { orderNo },
+            where: { order_no: orderNo },
             relations: ['items'],
         });
     }
 
     /**
      * Upserts invoices + their line items from an ERP webhook payload.
-     * Keyed by (storeId, invoiceNo) for the invoice, (invoice, productCode) for items.
+     * Keyed by (store_id, invoice_no) for the invoice, (invoice, product_code) for items.
      */
     async upsertFromErp(invoices: InvoiceDto[]): Promise<void> {
         for (const inv of invoices) {
             let invoice = await this.invoiceRepository.findOne({
-                where: { storeId: inv.store_id, invoiceNo: inv.invoice_no },
+                where: { store_id: inv.store_id, invoice_no: inv.invoice_no },
             });
 
             const invoiceFields = {
-                storeId: inv.store_id,
-                invoiceDate: inv.invoice_date,
-                orderNo: inv.order_no,
+                store_id: inv.store_id,
+                invoice_date: inv.invoice_date,
+                order_no: inv.order_no,
                 tax: inv.tax,
                 subtotal: inv.subtotal,
-                grandTotal: inv.grand_total,
-                shippingCharge: inv.shipping_charge ?? '0.00',
-                walletPrice: inv.wallet_price ?? '0.00',
+                grand_total: inv.grand_total,
+                shipping_charge: inv.shipping_charge ?? '0.00',
+                wallet_price: inv.wallet_price ?? '0.00',
             };
 
             if (invoice) {
                 Object.assign(invoice, invoiceFields);
             } else {
                 invoice = this.invoiceRepository.create({
-                    invoiceNo: inv.invoice_no,
+                    invoice_no: inv.invoice_no,
                     ...invoiceFields,
                 });
             }
@@ -60,13 +60,13 @@ export class InvoicesService {
             if (inv.items && inv.items.length > 0) {
                 for (const item of inv.items) {
                     const existingItem = await this.invoiceItemRepository.findOne({
-                        where: { invoice: { id: savedInvoice.id }, productCode: item.product_code },
+                        where: { invoice: { id: savedInvoice.id }, product_code: item.product_code },
                     });
 
                     const itemData = {
-                        productName: item.product_name,
-                        productPrice: item.product_price,
-                        productDiscountPrice: item.product_discount_price,
+                        product_name: item.product_name,
+                        product_price: item.product_price,
+                        product_discount_price: item.product_discount_price,
                         qty: item.qty,
                         total: item.total,
                     };
@@ -78,7 +78,7 @@ export class InvoicesService {
                         await this.invoiceItemRepository.save(
                             this.invoiceItemRepository.create({
                                 invoice: savedInvoice,
-                                productCode: item.product_code,
+                                product_code: item.product_code,
                                 ...itemData,
                             }),
                         );

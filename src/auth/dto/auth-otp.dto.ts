@@ -9,7 +9,7 @@ export class VerifyFirebaseTokenDto {
   })
   @IsString()
   @IsNotEmpty({ message: 'Firebase ID token is required' })
-  idToken: string;
+  id_token: string;
 }
 
 export class RefreshTokenDto {
@@ -30,4 +30,14 @@ export class UpdateProfileDto {
   @MaxLength(100, { message: 'Name is too long' })
   @Transform(({ value }) => value?.trim())
   name: string;
+}
+
+export class UpdateFcmTokenDto {
+  @ApiProperty({
+    example: 'dGhpcyBpcyBhIGZha2UgZmNtIHRva2Vu...',
+    description: 'FCM registration token obtained from the client Firebase Messaging SDK',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'FCM token is required' })
+  fcm_token: string;
 }

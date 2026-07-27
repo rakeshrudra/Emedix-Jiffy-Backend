@@ -33,21 +33,21 @@ export class UpdateAdminOrderItemDto {
 
   @ApiProperty({ example: true })
   @IsBoolean()
-  isAvailable: boolean;
+  is_available: boolean;
 
   @ApiProperty({ example: 3, minimum: 0 })
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  confirmedQuantity: number;
+  confirmed_quantity: number;
 }
 
 export class UpdateAdminOrderItemsDto {
   @ApiProperty({
     type: [UpdateAdminOrderItemDto],
     example: [
-      { order_item_id: 1, isAvailable: true, confirmedQuantity: 3 },
-      { order_item_id: 2, isAvailable: false, confirmedQuantity: 0 },
+      { order_item_id: 1, is_available: true, confirmed_quantity: 3 },
+      { order_item_id: 2, is_available: false, confirmed_quantity: 0 },
     ],
   })
   @IsArray()

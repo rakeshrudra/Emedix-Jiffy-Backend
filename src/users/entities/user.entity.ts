@@ -3,7 +3,6 @@ import {
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
-  UpdateDateColumn,
   Index,
 } from 'typeorm';
 
@@ -18,14 +17,13 @@ export class User {
   @Column({ default: '' })
   name: string;
 
-  // Nullable because unique constraint prevents default ''; set after Firebase auth
   @Index()
   @Column({ name: 'firebase_uid', nullable: true, unique: true })
   firebase_uid: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @Column({ name: 'fcm_token', nullable: true })
+  fcm_token: string | null;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  created_at: Date;
 }

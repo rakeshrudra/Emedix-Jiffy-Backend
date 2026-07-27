@@ -82,11 +82,11 @@ export class AdminController {
     @Request() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
-    if (!refreshToken) {
+    const refresh_token = req.cookies?.[REFRESH_TOKEN_COOKIE];
+    if (!refresh_token) {
       throw new UnauthorizedException();
     }
-    const result = await this.adminService.refresh(refreshToken);
+    const result = await this.adminService.refresh(refresh_token);
     return this.attachTokenCookiesAndStrip(res, result);
   }
 

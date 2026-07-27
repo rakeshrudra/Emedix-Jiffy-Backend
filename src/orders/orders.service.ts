@@ -7,13 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { Order, OrderStatus } from './entities/order.entity';
+import { Order, OrderActor, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
-import { OrderActor, OrderStatusLog } from './entities/order-status-log.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
@@ -22,10 +21,54 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { StoresService } from '../stores/stores.service';
 import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
 import { UsersService } from '../users/users.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { OrdersGateway } from './orders.gateway';
+
+export interface AdminOrderSummary {
+  order_id: number;
+  order_no: string;
+  store_id: string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: {
+    label: string;
+    address_line_1: string;
+    address_line_2: string;
+    formatted_address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country: string;
+    latitude: string;
+    longitude: string;
+  } | null;
+  subtotal: string;
+  discount: string;
+  total_amount: string;
+  scheduled_date: string | null;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  created_at: Date;
+  status: OrderStatus;
+}
+
+export interface OrderStoreAddress {
+  name: string;
+  emedix_name: string;
+  address_line_1: string;
+  formatted_address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+  latitude: string;
+  longitude: string;
+}
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -40,10 +83,13 @@ const VALID_ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 // Cancellation is a side-exit, not a step in the pickup workflow — allowed
-// from any non-terminal state up to (but not including) PICKED_UP. Cash on
-// pickup means there is no payment/refund to reverse.
 const CANCELLABLE_STATES: OrderStatus[] = [
   OrderStatus.PENDING,
+  OrderStatus.CONFIRMED,
+  OrderStatus.READY_FOR_PICKUP,
+];
+
+const RESTORE_STOCK_STATES: OrderStatus[] = [
   OrderStatus.CONFIRMED,
   OrderStatus.READY_FOR_PICKUP,
 ];
@@ -60,22 +106,24 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
-    @InjectRepository(OrderStatusLog)
-    private readonly statusLogRepository: Repository<OrderStatusLog>,
     @InjectRepository(OrderDeliveryAddress)
     private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
     private readonly invoicesService: InvoicesService,
     private readonly productsService: ProductsService,
     private readonly storesService: StoresService,
     private readonly cartService: CartService,
     private readonly addressesService: AddressesService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
+    private readonly ordersGateway: OrdersGateway,
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
   ) { }
 
-  async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
+  async createOrder(user_id: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
     const redisKey = `${IDEMPOTENCY_PREFIX}${dto.idempotency_key}`;
     const cachedOrderId = await this.redis.get(redisKey);
@@ -91,7 +139,7 @@ export class OrdersService {
 
     // 2. DB unique index — durable backstop for race conditions
     const existing = await this.orderRepository.findOne({
-      where: { idempotencyKey: dto.idempotency_key },
+      where: { idempotency_key: dto.idempotency_key },
     });
     if (existing) {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
@@ -101,21 +149,30 @@ export class OrdersService {
       return existing;
     }
 
-    // 3. Store must be active and open at order creation time
-    await this.storesService.assertOrderable(dto.store_id);
+    // 3. Store must be active and orderable for either now or the selected schedule
+    if (dto.scheduled_date || dto.scheduled_start_time || dto.scheduled_end_time) {
+      await this.storesService.assertOrderableAt(
+        dto.store_id,
+        dto.scheduled_date,
+        dto.scheduled_start_time,
+        dto.scheduled_end_time,
+      );
+    } else {
+      await this.storesService.assertOrderable(dto.store_id);
+    }
 
     // 4. Delivery address must belong to the user
     const address = await this.addressesService.findOwnedAddress(
-      userId,
+      user_id,
       dto.delivery_address_id,
     );
 
     // 5. Customer must exist
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findById(user_id);
     if (!user) throw new NotFoundException('User not found');
 
     // 6. Cart is the source of truth for items — must be non-empty
-    const cart = await this.cartService.getActiveCart(userId, dto.store_id);
+    const cart = await this.cartService.getActiveCart(user_id, dto.store_id);
     if (!cart || cart.items.length === 0) {
       throw new BadRequestException('Your cart is empty for this store.');
     }
@@ -127,24 +184,21 @@ export class OrdersService {
     for (const cartItem of cart.items) {
       const product = await this.productsService.findByCode(
         dto.store_id,
-        cartItem.productCode,
+        cartItem.product_code,
       );
-      if (product) productsByCode.set(cartItem.productCode, product);
+      if (product) productsByCode.set(cartItem.product_code, product);
     }
 
     // 8. Compute totals server-side from cart item prices — never trust the client
     const subtotal = cart.items.reduce((sum, item) => {
       const effectivePrice =
-        Number(item.productDiscountPrice) || Number(item.productPrice);
+        Number(item.product_discount_price) || Number(item.product_price);
       return sum + effectivePrice * item.quantity;
     }, 0);
     const deliveryCharge = 0; // dummy for now — no delivery-fee logic yet
     const discount = 0; // dummy for now — no coupon/discount logic yet
     const totalAmount = subtotal + deliveryCharge - discount;
 
-    const orderNumber = await this.generateOrderNumber();
-
-    // 9. Save order + delivery address snapshot + items + initial status log in one transaction
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -152,32 +206,34 @@ export class OrdersService {
     let savedOrder: Order;
 
     try {
+      const order_number = await this.generateOrderNumber(queryRunner.manager);
+
       const items = cart.items.map((cartItem) => {
-        const price = Number(cartItem.productPrice);
-        const discountPrice = Number(cartItem.productDiscountPrice);
-        const product = productsByCode.get(cartItem.productCode);
+        const price = Number(cartItem.product_price);
+        const discountPrice = Number(cartItem.product_discount_price);
+        const product = productsByCode.get(cartItem.product_code);
 
         return this.orderItemRepository.create({
-          productCode: cartItem.productCode,
-          productName: cartItem.productName,
-          productCompany: product?.productCompany ?? '',
-          productType: product?.productType ?? '',
-          packagingOfMedicines: product?.packagingOfMedicines ?? '',
-          productComposition: product?.productComposition ?? '',
-          hsnCode: product?.hsnCode ?? '',
+          product_code: cartItem.product_code,
+          product_name: cartItem.product_name,
+          product_company: product?.product_company ?? '',
+          product_type: product?.product_type ?? '',
+          packaging_of_medicines: product?.packaging_of_medicines ?? '',
+          product_composition: product?.product_composition ?? '',
+          hsn_code: product?.hsn_code ?? '',
           qty: cartItem.quantity,
-          productPrice: price,
-          productDiscountPrice: discountPrice,
+          product_price: price,
+          product_discount_price: discountPrice,
           total: (discountPrice || price) * cartItem.quantity,
         });
       });
 
       const deliveryAddress = this.orderDeliveryAddressRepository.create({
-        sourceAddressId: address.id,
+        source_address_id: address.id,
         label: address.label,
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2,
-        formattedAddress: address.formattedAddress,
+        address_line_1: address.address_line_1,
+        address_line_2: address.address_line_2,
+        formatted_address: address.formatted_address,
         city: address.city,
         state: address.state,
         pincode: address.pincode,
@@ -187,34 +243,26 @@ export class OrdersService {
       });
 
       const order = this.orderRepository.create({
-        orderNumber,
-        userId,
-        storeId: dto.store_id,
+        order_number: order_number,
+        user_id: user_id,
+        store_id: dto.store_id,
         status: OrderStatus.PENDING,
-        idempotencyKey: dto.idempotency_key,
+        idempotency_key: dto.idempotency_key,
         subtotal,
-        deliveryCharge,
+        delivery_charge: deliveryCharge,
         discount,
-        totalAmount,
-        deliveryAddress,
-        prescriptionUrls: dto.prescription_urls
+        total_amount: totalAmount,
+        scheduled_date: dto.scheduled_date ?? null,
+        scheduled_start_time: dto.scheduled_start_time ?? null,
+        scheduled_end_time: dto.scheduled_end_time ?? null,
+        delivery_address: deliveryAddress,
+        prescription_urls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
           : '',
         items,
       });
 
       savedOrder = await queryRunner.manager.save(Order, order);
-
-      await queryRunner.manager.save(
-        OrderStatusLog,
-        this.statusLogRepository.create({
-          order: { id: savedOrder.id } as Order,
-          fromStatus: null,
-          toStatus: OrderStatus.PENDING,
-          actor: OrderActor.SYSTEM,
-          notes: 'Order created after payment success',
-        }),
-      );
 
       await queryRunner.commitTransaction();
     } catch (err) {
@@ -224,7 +272,31 @@ export class OrdersService {
       await queryRunner.release();
     }
 
-    // 6. Cache idempotency key — best-effort, never block the response
+    // 6. Fire a notification to the customer
+    this.notifyOrderStatusUpdated(
+      user_id,
+      savedOrder.id,
+      OrderStatus.PENDING,
+      savedOrder.order_number,
+    );
+
+    // 7. Push the new order to the store's admin dashboard in real time via web sockets
+    this.usersService
+      .findById(user_id)
+      .then((user) => {
+        this.ordersGateway.emitNewOrder(
+          savedOrder.store_id,
+          this.buildAdminOrderSummary(savedOrder, user),
+        );
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to emit order:new for ${savedOrder.order_number}: ${message}`,
+        );
+      });
+
+    // 8. Cache idempotency key — best-effort, never block the response
     this.redis
       .set(redisKey, savedOrder.id, 'EX', IDEMPOTENCY_TTL)
       .catch((err) => {
@@ -234,13 +306,13 @@ export class OrdersService {
         );
       });
 
-    // 7. Clear only the ordered store cart now that the order is placed - best-effort
+    // 9. Clear only the ordered store cart now that the order is placed - best-effort
     this.cartService
-      .clearByUserAndStoreId(userId, dto.store_id)
+      .clearByUserAndStoreId(user_id, dto.store_id)
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to clear cart for user ${userId} and store ${dto.store_id} after order: ${message}`,
+          `Failed to clear cart for user ${user_id} and store ${dto.store_id} after order: ${message}`,
         );
       });
 
@@ -248,13 +320,13 @@ export class OrdersService {
   }
 
   async getOrdersByUser(
-    userId: string,
+    user_id: string,
     page: number,
     limit: number,
   ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
     const [data, total] = await this.orderRepository.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
+      where: { user_id: user_id },
+      order: { created_at: 'DESC' },
       relations: ['items'],
       skip: (page - 1) * limit,
       take: limit,
@@ -262,51 +334,56 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(orderId: number, userId: string): Promise<Order> {
+  async getOrderById(order_id: number, user_id: string ): Promise<Order & { store_address: OrderStoreAddress | null }> {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId, userId },
-      relations: ['items', 'statusLogs'],
+      where: { id: order_id, user_id: user_id },
+      relations: ['items'],
     });
     if (!order) throw new NotFoundException('Order not found');
-    return order;
+
+    const store = await this.storeRepository.findOne({
+      where: { store_id: order.store_id },
+      select: {
+        name: true,
+        emedix_name: true,
+        address_line_1: true,
+        formatted_address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    return {
+      ...order,
+      store_address: store ? this.formatStoreAddress(store) : null,
+    };
   }
 
   async getAdminOrders(
-    storeId: string,
+    store_id: string,
     status?: OrderStatus,
     page = 1,
     limit = 30,
   ) {
-    const where: Partial<Order> = { storeId };
+    const where: Partial<Order> = { store_id: store_id };
     if (status) where.status = status;
 
     const [orders, total] = await this.orderRepository.findAndCount({
       where,
-      relations: ['deliveryAddress'],
-      order: { createdAt: 'DESC' },
+      relations: ['delivery_address'],
+      order: { created_at: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
-        const user = await this.usersService.findById(order.userId);
-
-        return {
-          order_id: order.id,
-          order_no: order.orderNumber,
-          store_id: order.storeId,
-          customer_name: user?.name ?? '',
-          customer_phone: user?.mobile_no ?? '',
-          delivery_address: this.formatAdminDeliveryAddress(
-            order.deliveryAddress,
-          ),
-          subtotal: this.formatMoney(order.subtotal),
-          discount: this.formatMoney(order.discount),
-          total_amount: this.formatMoney(order.totalAmount),
-          created_at: order.createdAt,
-          status: order.status,
-        };
+        const user = await this.usersService.findById(order.user_id);
+        return this.buildAdminOrderSummary(order, user);
       }),
     );
 
@@ -320,9 +397,9 @@ export class OrdersService {
     };
   }
 
-  async getAdminOrderItems(orderId: number, storeId: string) {
+  async getAdminOrderItems(order_id: number, store_id: string) {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId, storeId },
+      where: { id: order_id, store_id: store_id },
       relations: ['items'],
     });
 
@@ -332,36 +409,35 @@ export class OrdersService {
 
     return {
       order_id: order.id,
-      order_no: order.orderNumber,
+      order_no: order.order_number,
       status: order.status,
       items: items.map((item) => ({
         id: item.id,
-        product_code: item.productCode,
-        product_name: item.productName,
-        product_company: item.productCompany,
-        product_type: item.productType,
-        packaging_of_medicines: item.packagingOfMedicines,
-        product_composition: item.productComposition,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        product_company: item.product_company,
+        product_type: item.product_type,
+        packaging_of_medicines: item.packaging_of_medicines,
+        product_composition: item.product_composition,
         ordered_quantity: item.qty,
-        product_price: item.productPrice,
-        product_discount_price: item.productDiscountPrice,
+        product_price: item.product_price,
+        product_discount_price: item.product_discount_price,
         total: item.total,
-        hsn_code: item.hsnCode,
-        isAvailable: item.isAvailable,
-        confirmedQuantity: item.confirmedQuantity,
-        created_at: item.createdAt,
+        hsn_code: item.hsn_code,
+        is_available: item.is_available,
+        confirmed_quantity: item.confirmed_quantity,
       })),
     };
   }
 
   async updateAdminOrderItems(
-    orderId: number,
-    storeId: string,
+    order_id: number,
+    store_id: string,
     dto: UpdateAdminOrderItemsDto,
   ) {
     return this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
-        where: { id: orderId, storeId },
+        where: { id: order_id, store_id: store_id },
         relations: ['items'],
       });
 
@@ -404,26 +480,26 @@ export class OrdersService {
         const submitted = submittedById.get(item.id);
         const orderedQuantity = Number(item.qty);
 
-        if (submitted.confirmedQuantity > orderedQuantity) {
+        if (submitted.confirmed_quantity > orderedQuantity) {
           throw new BadRequestException(
-            `confirmedQuantity cannot exceed ordered quantity for order item ${item.id}.`,
+            `confirmed_quantity cannot exceed ordered quantity for order item ${item.id}.`,
           );
         }
 
-        if (!submitted.isAvailable && submitted.confirmedQuantity !== 0) {
+        if (!submitted.is_available && submitted.confirmed_quantity !== 0) {
           throw new BadRequestException(
-            `confirmedQuantity must be 0 when order item ${item.id} is unavailable.`,
+            `confirmed_quantity must be 0 when order item ${item.id} is unavailable.`,
           );
         }
 
-        if (submitted.isAvailable && submitted.confirmedQuantity < 1) {
+        if (submitted.is_available && submitted.confirmed_quantity < 1) {
           throw new BadRequestException(
-            `confirmedQuantity must be at least 1 when order item ${item.id} is available.`,
+            `confirmed_quantity must be at least 1 when order item ${item.id} is available.`,
           );
         }
 
-        item.isAvailable = submitted.isAvailable;
-        item.confirmedQuantity = submitted.confirmedQuantity;
+        item.is_available = submitted.is_available;
+        item.confirmed_quantity = submitted.confirmed_quantity;
       }
 
       const updatedItems = await manager.save(OrderItem, order.items);
@@ -433,22 +509,22 @@ export class OrdersService {
         items: updatedItems.map((item) => ({
           id: item.id,
           ordered_quantity: item.qty,
-          isAvailable: item.isAvailable,
-          confirmedQuantity: item.confirmedQuantity,
+          is_available: item.is_available,
+          confirmed_quantity: item.confirmed_quantity,
         })),
       };
     });
   }
 
   async updateAdminOrderStatus(
-    orderId: number,
-    storeId: string,
+    order_id: number,
+    store_id: string,
     dto: UpdateAdminOrderStatusDto,
-    adminId: string,
+    admin_id: string,
   ) {
     const updated = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
-        where: { id: orderId, storeId },
+        where: { id: order_id, store_id: store_id },
         relations: ['items'],
       });
 
@@ -476,30 +552,25 @@ export class OrdersService {
       order.status = targetStatus;
 
       const savedOrder = await manager.save(Order, order);
-      await manager.save(
-        OrderStatusLog,
-        manager.create(OrderStatusLog, {
-          order: { id: savedOrder.id } as Order,
-          fromStatus: previousStatus,
-          toStatus: targetStatus,
-          actor: OrderActor.STORE,
-          notes: `Updated by admin ${adminId}`,
-        }),
-      );
+
+      if (previousStatus === OrderStatus.PENDING && targetStatus === OrderStatus.CONFIRMED) {
+        await this.reduceProductStock(manager, store_id, order.items);
+      }
 
       return {
         order: {
           id: savedOrder.id,
-          order_no: savedOrder.orderNumber,
+          order_no: savedOrder.order_number,
           previous_status: previousStatus,
           status: savedOrder.status,
-          user_id: savedOrder.userId,
+          user_id: savedOrder.user_id,
         },
       };
     });
 
     this.notifyOrderStatusUpdated(
       updated.order.user_id,
+      updated.order.id,
       updated.order.status,
       updated.order.order_no,
     );
@@ -514,25 +585,20 @@ export class OrdersService {
     };
   }
 
-  /**
-   * PATCH /api/orders/:id/cancel (user) and
-   * PATCH /api/admin/orders/:orderId/cancel (store).
-   * Cancellation is a side-exit from PENDING/CONFIRMED/READY_FOR_PICKUP —
-   * not part of the linear pickup workflow, so it bypasses VALID_ADMIN_TRANSITIONS.
-   */
   async cancelOrder(
-    orderId: number,
+    order_id: number,
     actor: OrderActor.USER | OrderActor.STORE,
-    owner: { userId?: string; storeId?: string },
+    owner: { user_id?: string; store_id?: string },
     dto: CancelOrderDto,
   ): Promise<Order> {
-    return this.dataSource.transaction(async (manager) => {
+    const savedOrder = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
         where: {
-          id: orderId,
-          ...(owner.userId ? { userId: owner.userId } : {}),
-          ...(owner.storeId ? { storeId: owner.storeId } : {}),
+          id: order_id,
+          ...(owner.user_id ? { user_id: owner.user_id } : {}),
+          ...(owner.store_id ? { store_id: owner.store_id } : {}),
         },
+        relations: ['items'],
       });
 
       if (!order) throw new NotFoundException('Order not found');
@@ -545,59 +611,62 @@ export class OrdersService {
 
       const previousStatus = order.status;
       order.status = OrderStatus.CANCELLED;
-      order.cancelledAt = new Date();
-      order.cancellationReason = dto.reason ?? '';
+      order.cancelled_at = new Date();
+      order.cancellation_reason = dto.reason ?? '';
+      order.cancelled_by = actor === OrderActor.USER ? 'USER' : 'STORE';
 
       const savedOrder = await manager.save(Order, order);
-      await manager.save(
-        OrderStatusLog,
-        manager.create(OrderStatusLog, {
-          order: { id: savedOrder.id } as Order,
-          fromStatus: previousStatus,
-          toStatus: OrderStatus.CANCELLED,
-          actor,
-          notes: dto.reason ?? '',
-        }),
-      );
+
+      if (RESTORE_STOCK_STATES.includes(previousStatus)) {
+        await this.restoreProductStock(manager, savedOrder.store_id, order.items);
+      }
 
       this.logger.log(
-        `Order ${savedOrder.orderNumber}: ${previousStatus} → CANCELLED (${actor})`,
+        `Order ${savedOrder.order_number}: ${previousStatus} → CANCELLED (${actor})`,
       );
 
       return savedOrder;
     });
+
+    this.notifyOrderStatusUpdated(
+      savedOrder.user_id,
+      savedOrder.id,
+      OrderStatus.CANCELLED,
+      savedOrder.order_number,
+    );
+
+    return savedOrder;
   }
 
-  async getOrderInvoice(orderId: number, userId: string): Promise<Invoice> {
+  async getOrderInvoice(order_id: number, user_id: string): Promise<Invoice> {
     const order = await this.orderRepository.findOne({
-      where: { id: orderId },
+      where: { id: order_id },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.userId !== userId) throw new ForbiddenException('Access denied');
+    if (order.user_id !== user_id) throw new ForbiddenException('Access denied');
 
     const invoice = await this.invoicesService.findByOrderNumber(
-      order.orderNumber,
+      order.order_number,
     );
     if (!invoice) throw new NotFoundException('Invoice not ready yet');
 
     return invoice;
   }
 
-  // Called by GET /api/emedix-webhook/orders/pending — returns PENDING orders, no status change
-  async fetchPendingOrders(storeId: string): Promise<Order[]> {
-    const where: Partial<Order> = { status: OrderStatus.PENDING, storeId };
+  async fetchPendingOrders(store_id: string): Promise<Order[]> {
+    const where: Partial<Order> = { status: OrderStatus.PENDING, store_id: store_id };
 
     const orders = await this.orderRepository.find({
       where,
-      relations: ['items', 'deliveryAddress'],
-      order: { createdAt: 'ASC' },
+      relations: ['items', 'delivery_address'],
+      order: { created_at: 'ASC' },
     });
 
     if (orders.length > 0) {
       await this.orderRepository
         .createQueryBuilder()
         .update(Order)
-        .set({ erpFetchedAt: new Date() })
+        .set({ erp_fetched_at: new Date() })
         .whereInIds(orders.map((o) => o.id))
         .execute();
     }
@@ -606,18 +675,18 @@ export class OrdersService {
   }
 
   async applyErpStatusUpdate(
-    orderNumber: string,
-    newStatus: string,
-    invoiceUrl?: string,
-    invoiceNumber?: string,
+    order_number: string,
+    new_status: string,
+    invoice_url?: string,
+    invoice_number?: string,
     notes?: string,
   ): Promise<Order> {
     const order = await this.orderRepository.findOne({
-      where: { orderNumber },
+      where: { order_number: order_number },
     });
-    if (!order) throw new NotFoundException(`Order not found: ${orderNumber}`);
+    if (!order) throw new NotFoundException(`Order not found: ${order_number}`);
 
-    const targetStatus = newStatus.toUpperCase() as OrderStatus;
+    const targetStatus = new_status.toUpperCase() as OrderStatus;
 
     if (targetStatus !== OrderStatus.FAILED) {
       const expectedNext = VALID_ERP_TRANSITIONS[order.status];
@@ -631,40 +700,77 @@ export class OrdersService {
     const previousStatus = order.status;
     order.status = targetStatus;
 
-    if (invoiceUrl) order.invoiceUrl = invoiceUrl;
-    if (invoiceNumber) order.invoiceNumber = invoiceNumber;
+    if (invoice_url) order.invoice_url = invoice_url;
+    if (invoice_number) order.invoice_number = invoice_number;
 
     const updated = await this.orderRepository.save(order);
-    await this.logTransition(
-      order.id,
-      previousStatus,
-      targetStatus,
-      OrderActor.ERP,
-      notes,
-    );
-
     this.logger.log(
-      `Order ${orderNumber}: ${previousStatus} → ${targetStatus} (ERP webhook)`,
+      `Order ${order_number}: ${previousStatus} → ${targetStatus} (ERP webhook)${notes ? ` — ${notes}` : ''}`,
     );
     return updated;
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────
 
-  private async generateOrderNumber(): Promise<string> {
+  private async reduceProductStock(
+    manager: EntityManager,
+    store_id: string,
+    items: OrderItem[],
+  ): Promise<void> {
+    for (const item of items) {
+      const quantity = Number(item.confirmed_quantity) || 0;
+      if (quantity <= 0) continue;
+
+      await manager
+        .createQueryBuilder()
+        .update(Product)
+        .set({
+          product_stock: () => 'GREATEST(product_stock - :quantity, 0)',
+        })
+        .where('store_id = :store_id', { store_id })
+        .andWhere('product_code = :product_code', { product_code: item.product_code })
+        .setParameters({ quantity })
+        .execute();
+    }
+  }
+
+  private async restoreProductStock(
+    manager: EntityManager,
+    store_id: string,
+    items: OrderItem[],
+  ): Promise<void> {
+    for (const item of items) {
+      const quantity = Number(item.confirmed_quantity) || 0;
+      if (quantity <= 0) continue;
+
+      await manager
+        .createQueryBuilder()
+        .update(Product)
+        .set({
+          product_stock: () => 'product_stock + :quantity',
+        })
+        .where('store_id = :store_id', { store_id })
+        .andWhere('product_code = :product_code', { product_code: item.product_code })
+        .setParameters({ quantity })
+        .execute();
+    }
+  }
+
+  private async generateOrderNumber(manager: EntityManager): Promise<string> {
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `EJ-${dateStr}-`;
 
-    const lastOrder = await this.orderRepository
-      .createQueryBuilder('order')
-      .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('order.orderNumber', 'DESC')
+    const lastOrder = await manager
+      .createQueryBuilder(Order, 'order')
+      .where('order.order_number LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('order.order_number', 'DESC')
+      .setLock('pessimistic_write')
       .getOne();
 
     let seq = 1;
     if (lastOrder) {
-      const parts = lastOrder.orderNumber.split('-');
+      const parts = lastOrder.order_number.split('-');
       const lastSeq = parseInt(parts[parts.length - 1], 10);
       if (!isNaN(lastSeq)) seq = lastSeq + 1;
     }
@@ -672,29 +778,12 @@ export class OrdersService {
     return `${prefix}${seq.toString().padStart(4, '0')}`;
   }
 
-  private async logTransition(
-    orderId: number,
-    fromStatus: OrderStatus | null,
-    toStatus: OrderStatus,
-    actor: OrderActor,
-    notes?: string,
-  ): Promise<void> {
-    const log = this.statusLogRepository.create({
-      order: { id: orderId } as Order,
-      fromStatus: fromStatus ?? null,
-      toStatus,
-      actor,
-      notes: notes ?? '',
-    });
-    await this.statusLogRepository.save(log);
-  }
-
   private formatAdminDeliveryAddress(address: OrderDeliveryAddress) {
     return {
       label: address.label,
-      address_line_1: address.addressLine1,
-      address_line_2: address.addressLine2,
-      formatted_address: address.formattedAddress,
+      address_line_1: address.address_line_1,
+      address_line_2: address.address_line_2,
+      formatted_address: address.formatted_address,
       city: address.city,
       state: address.state,
       pincode: address.pincode,
@@ -704,8 +793,47 @@ export class OrdersService {
     };
   }
 
+  private formatStoreAddress(store: Store): OrderStoreAddress {
+    return {
+      name: store.name,
+      emedix_name: store.emedix_name,
+      address_line_1: store.address_line_1,
+      formatted_address: store.formatted_address,
+      city: store.city,
+      state: store.state,
+      pincode: store.pincode,
+      country: store.country,
+      latitude: String(store.latitude),
+      longitude: String(store.longitude),
+    };
+  }
+
   private formatMoney(value: number | string): string {
     return Number(value).toFixed(2);
+  }
+
+  private buildAdminOrderSummary(
+    order: Order,
+    user: { name: string; mobile_no: string } | null,
+  ): AdminOrderSummary {
+    return {
+      order_id: order.id,
+      order_no: order.order_number,
+      store_id: order.store_id,
+      customer_name: user?.name ?? '',
+      customer_phone: user?.mobile_no ?? '',
+      delivery_address: order.delivery_address
+        ? this.formatAdminDeliveryAddress(order.delivery_address)
+        : null,
+      subtotal: this.formatMoney(order.subtotal),
+      discount: this.formatMoney(order.discount),
+      total_amount: this.formatMoney(order.total_amount),
+      scheduled_date: order.scheduled_date,
+      scheduled_start_time: order.scheduled_start_time,
+      scheduled_end_time: order.scheduled_end_time,
+      created_at: order.created_at,
+      status: order.status,
+    };
   }
 
   private assertAdminChecklistCanConfirm(items: OrderItem[]): void {
@@ -717,7 +845,7 @@ export class OrdersService {
 
     for (const item of items) {
       const orderedQuantity = Number(item.qty);
-      const confirmedQuantity = Number(item.confirmedQuantity);
+      const confirmedQuantity = Number(item.confirmed_quantity);
 
       if (confirmedQuantity < 0 || confirmedQuantity > orderedQuantity) {
         throw new BadRequestException(
@@ -725,7 +853,7 @@ export class OrdersService {
         );
       }
 
-      if (item.isAvailable) {
+      if (item.is_available) {
         if (confirmedQuantity < 1) {
           throw new BadRequestException(
             `Available order item ${item.id} must have a confirmed quantity.`,
@@ -747,21 +875,34 @@ export class OrdersService {
   }
 
   private notifyOrderStatusUpdated(
-    userId: string,
+    user_id: string,
+    order_id: number,
     status: OrderStatus,
-    orderNumber: string,
+    order_number: string,
   ): void {
     const messages: Partial<Record<OrderStatus, string>> = {
+      [OrderStatus.PENDING]: 'Your order has been placed successfully.',
       [OrderStatus.CONFIRMED]: 'Your order has been confirmed by the store.',
       [OrderStatus.READY_FOR_PICKUP]: 'Your order is ready for pickup.',
       [OrderStatus.PICKED_UP]: 'Your order has been marked as picked up.',
+      [OrderStatus.CANCELLED]: 'Your order has been cancelled.',
     };
 
     const message = messages[status];
     if (!message) return;
 
-    this.logger.log(
-      `Notification deferred for user ${userId}, order ${orderNumber}: ${message}`,
-    );
+    // Best-effort, fire-and-forget — must never affect the status-update response.
+    this.notificationsService
+      .sendOrderStatusUpdate(user_id, `Order ${order_number}`, message, {
+        order_id: order_id,
+        order_number: order_number,
+        status,
+      })
+      .catch((err) => {
+        const message2 = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Push notification failed for user ${user_id}, order ${order_number}: ${message2}`,
+        );
+      });
   }
 }

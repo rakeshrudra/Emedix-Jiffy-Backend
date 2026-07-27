@@ -22,19 +22,19 @@ export class CartService {
     private readonly productsService: ProductsService,
   ) {}
 
-  async getCart(userId: string, storeId?: string) {
-    if (storeId) {
-      const cart = await this.findCart(userId, storeId);
+  async getCart(user_id: string, store_id?: string) {
+    if (store_id) {
+      const cart = await this.findCart(user_id, store_id);
       return {
         success: true,
-        data: cart ? this.format(cart) : this.emptyCart(storeId),
+        data: cart ? this.format(cart) : this.emptyCart(store_id),
       };
     }
 
     const carts = await this.cartRepo.find({
-      where: { userId },
+      where: { user_id: user_id },
       relations: ['items'],
-      order: { updatedAt: 'DESC' },
+      order: { updated_at: 'DESC' },
     });
 
     return {
@@ -46,7 +46,7 @@ export class CartService {
     };
   }
 
-  async addItem(userId: string, dto: AddItemDto) {
+  async addItem(user_id: string, dto: AddItemDto) {
     const product = await this.productsService.findByCode(
       dto.store_id,
       dto.product_code,
@@ -54,21 +54,21 @@ export class CartService {
     if (!product)
       throw new NotFoundException('Product not found in this store');
 
-    let cart = await this.findCart(userId, dto.store_id);
+    let cart = await this.findCart(user_id, dto.store_id);
 
     if (!cart) {
       cart = await this.cartRepo.save(
-        this.cartRepo.create({ userId, storeId: dto.store_id, items: [] }),
+        this.cartRepo.create({ user_id: user_id, store_id: dto.store_id, items: [] }),
       );
     }
 
     const existing = cart.items.find(
-      (item) => item.productCode === dto.product_code,
+      (item) => item.product_code === dto.product_code,
     );
     const requestedQuantity = existing ? existing.quantity + 1 : 1;
     this.productsService.assertAvailable(
       product,
-      product.productName,
+      product.product_name,
       requestedQuantity,
     );
 
@@ -79,10 +79,10 @@ export class CartService {
       await this.itemRepo.save(
         this.itemRepo.create({
           cart,
-          productCode: product.productCode,
-          productName: product.productName,
-          productPrice: Number(product.productPrice) || 0,
-          productDiscountPrice: Number(product.productDiscountPrice) || 0,
+          product_code: product.product_code,
+          product_name: product.product_name,
+          product_price: Number(product.product_price) || 0,
+          product_discount_price: Number(product.product_discount_price) || 0,
           quantity: 1,
         }),
       );
@@ -90,29 +90,29 @@ export class CartService {
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(userId, dto.store_id)),
+      data: this.format(await this.getCartOrThrow(user_id, dto.store_id)),
     };
   }
 
   async updateItem(
-    userId: string,
-    productCode: string,
+    user_id: string,
+    product_code: string,
     dto: UpdateItemDto,
-    storeId: string,
+    store_id: string,
   ) {
-    const cart = await this.getCartOrThrow(userId, storeId);
-    const item = this.getItemOrThrow(cart, productCode);
+    const cart = await this.getCartOrThrow(user_id, store_id);
+    const item = this.getItemOrThrow(cart, product_code);
 
     if (dto.quantity === 0) {
       await this.itemRepo.remove(item);
     } else {
       const product = await this.productsService.findByCode(
-        cart.storeId,
-        productCode,
+        cart.store_id,
+        product_code,
       );
       this.productsService.assertAvailable(
         product,
-        item.productName,
+        item.product_name,
         dto.quantity,
       );
 
@@ -122,29 +122,29 @@ export class CartService {
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(userId, cart.storeId)),
+      data: this.format(await this.getCartOrThrow(user_id, cart.store_id)),
     };
   }
 
-  async removeItem(userId: string, productCode: string, storeId: string) {
-    const cart = await this.getCartOrThrow(userId, storeId);
-    const item = this.getItemOrThrow(cart, productCode);
+  async removeItem(user_id: string, product_code: string, store_id: string) {
+    const cart = await this.getCartOrThrow(user_id, store_id);
+    const item = this.getItemOrThrow(cart, product_code);
 
     await this.itemRepo.remove(item);
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(userId, cart.storeId)),
+      data: this.format(await this.getCartOrThrow(user_id, cart.store_id)),
     };
   }
 
-  async clearCart(userId: string, storeId: string) {
-    await this.clearByUserAndStoreId(userId, storeId);
+  async clearCart(user_id: string, store_id: string) {
+    await this.clearByUserAndStoreId(user_id, store_id);
     return { success: true, message: 'Cart cleared' };
   }
 
-  async validateCart(userId: string, storeId: string) {
-    const cart = await this.findCart(userId, storeId);
+  async validateCart(user_id: string, store_id: string) {
+    const cart = await this.findCart(user_id, store_id);
 
     if (!cart || cart.items.length === 0) {
       throw new BadRequestException('Cart is empty');
@@ -155,17 +155,17 @@ export class CartService {
 
     for (const cartItem of cart.items) {
       const product = await this.productsService.findByCode(
-        cart.storeId,
-        cartItem.productCode,
+        cart.store_id,
+        cartItem.product_code,
       );
 
       const itemResult: any = {
-        product_code: cartItem.productCode,
-        product_name: cartItem.productName,
+        product_code: cartItem.product_code,
+        product_name: cartItem.product_name,
         quantity: cartItem.quantity,
         cart_price:
-          Number(cartItem.productDiscountPrice) ||
-          Number(cartItem.productPrice),
+          Number(cartItem.product_discount_price) ||
+          Number(cartItem.product_price),
         issues: [],
       };
 
@@ -184,8 +184,8 @@ export class CartService {
 
         const currentPrice = this.productsService.getEffectivePrice(product);
         const cartPrice =
-          Number(cartItem.productDiscountPrice) ||
-          Number(cartItem.productPrice);
+          Number(cartItem.product_discount_price) ||
+          Number(cartItem.product_price);
 
         if (Math.abs(currentPrice - cartPrice) > 0.01) {
           itemResult.issues.push(
@@ -199,7 +199,7 @@ export class CartService {
       if (itemResult.issues.length > 0) {
         issues.push(
           ...itemResult.issues.map(
-            (issue: string) => `${cartItem.productName}: ${issue}`,
+            (issue: string) => `${cartItem.product_name}: ${issue}`,
           ),
         );
       }
@@ -208,7 +208,7 @@ export class CartService {
     return {
       success: true,
       data: {
-        store_id: cart.storeId,
+        store_id: cart.store_id,
         valid: issues.length === 0,
         issues,
         items: itemResults,
@@ -216,16 +216,16 @@ export class CartService {
     };
   }
 
-  async clearByUserId(userId: string): Promise<void> {
+  async clearByUserId(user_id: string): Promise<void> {
     const carts = await this.cartRepo.find({
-      where: { userId },
+      where: { user_id: user_id },
       relations: ['items'],
     });
     await this.removeCarts(carts);
   }
 
-  async clearByUserAndStoreId(userId: string, storeId: string): Promise<void> {
-    const cart = await this.findCart(userId, storeId);
+  async clearByUserAndStoreId(user_id: string, store_id: string): Promise<void> {
+    const cart = await this.findCart(user_id, store_id);
     await this.removeCarts(cart ? [cart] : []);
   }
 
@@ -233,29 +233,29 @@ export class CartService {
    * Raw cart entity for a user+store, for internal use by other services
    * (e.g. OrdersService building order items from cart contents).
    */
-  async getActiveCart(userId: string, storeId: string): Promise<Cart | null> {
-    return this.findCart(userId, storeId);
+  async getActiveCart(user_id: string, store_id: string): Promise<Cart | null> {
+    return this.findCart(user_id, store_id);
   }
 
   private async findCart(
-    userId: string,
-    storeId: string,
+    user_id: string,
+    store_id: string,
   ): Promise<Cart | null> {
     return this.cartRepo.findOne({
-      where: { userId, storeId },
+      where: { user_id: user_id, store_id: store_id },
       relations: ['items'],
     });
   }
 
-  private async getCartOrThrow(userId: string, storeId: string): Promise<Cart> {
-    const cart = await this.findCart(userId, storeId);
+  private async getCartOrThrow(user_id: string, store_id: string): Promise<Cart> {
+    const cart = await this.findCart(user_id, store_id);
     if (!cart) throw new NotFoundException('Cart not found');
     return cart;
   }
 
-  private getItemOrThrow(cart: Cart, productCode: string): CartItem {
+  private getItemOrThrow(cart: Cart, product_code: string): CartItem {
     const item = cart.items.find(
-      (cartItem) => cartItem.productCode === productCode,
+      (cartItem) => cartItem.product_code === product_code,
     );
     if (!item) throw new NotFoundException('Item not in cart');
     return item;
@@ -272,10 +272,10 @@ export class CartService {
     await this.cartRepo.remove(carts);
   }
 
-  private emptyCart(storeId: string | null = null) {
+  private emptyCart(store_id: string | null = null) {
     return {
       id: null,
-      store_id: storeId,
+      store_id: store_id,
       items: [],
       item_count: 0,
       subtotal: 0,
@@ -286,14 +286,14 @@ export class CartService {
   private format(cart: Cart) {
     const items = (cart.items ?? []).map((item) => {
       const effectivePrice =
-        Number(item.productDiscountPrice) || Number(item.productPrice);
+        Number(item.product_discount_price) || Number(item.product_price);
 
       return {
         id: item.id,
-        product_code: item.productCode,
-        product_name: item.productName,
-        product_price: Number(item.productPrice),
-        product_discount_price: Number(item.productDiscountPrice),
+        product_code: item.product_code,
+        product_name: item.product_name,
+        product_price: Number(item.product_price),
+        product_discount_price: Number(item.product_discount_price),
         effective_price: effectivePrice,
         quantity: item.quantity,
         line_total: effectivePrice * item.quantity,
@@ -304,11 +304,11 @@ export class CartService {
 
     return {
       id: cart.id,
-      store_id: cart.storeId,
+      store_id: cart.store_id,
       items,
       item_count: items.reduce((sum, item) => sum + item.quantity, 0),
       subtotal: Math.round(subtotal * 100) / 100,
-      updated_at: cart.updatedAt,
+      updated_at: cart.updated_at,
     };
   }
 }

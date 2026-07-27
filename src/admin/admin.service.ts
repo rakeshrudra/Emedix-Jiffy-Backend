@@ -52,13 +52,13 @@ export class AdminService {
     const store = await this.storesService.findStoreForAdminByStoreId(
       dto.store_id,
     );
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const password_hash = await bcrypt.hash(dto.password, 12);
 
     const admin = await this.adminRepository.save(
       this.adminRepository.create({
         username,
-        passwordHash,
-        storeId: dto.store_id,
+        password_hash: password_hash,
+        store_id: dto.store_id,
       }),
     );
 
@@ -68,28 +68,28 @@ export class AdminService {
       data: {
         id: admin.id,
         username: admin.username,
-        store_id: admin.storeId,
+        store_id: admin.store_id,
         store_name: store.name,
-        created_at: admin.createdAt,
+        created_at: admin.created_at,
       },
     };
   }
 
-  async login(usernameInput: string, password: string) {
-    const username = this.normalizeUsername(usernameInput);
+  async login(username_input: string, password: string) {
+    const username = this.normalizeUsername(username_input);
     const admin = await this.adminRepository.findOne({ where: { username } });
 
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordMatches = await bcrypt.compare(password, admin.passwordHash);
+    const passwordMatches = await bcrypt.compare(password, admin.password_hash);
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const store = await this.storesService.findStoreForAdminByStoreId(
-      admin.storeId,
+      admin.store_id,
     );
     const tokens = this.issueTokens(admin);
 
@@ -103,10 +103,10 @@ export class AdminService {
     };
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refresh_token: string) {
     let payload: AdminRefreshTokenPayload;
     try {
-      payload = await this.jwtService.verifyAsync(refreshToken, {
+      payload = await this.jwtService.verifyAsync(refresh_token, {
         secret: this.configService.get<string>('ADMIN_JWT_REFRESH_SECRET'),
       });
     } catch {
@@ -118,7 +118,7 @@ export class AdminService {
     }
 
     const admin = await this.findExistingAdmin(payload.sub);
-    await this.storesService.findStoreForAdminByStoreId(admin.storeId);
+    await this.storesService.findStoreForAdminByStoreId(admin.store_id);
 
     return {
       success: true,
@@ -126,10 +126,10 @@ export class AdminService {
     };
   }
 
-  async getCurrentAdmin(adminId: string) {
-    const admin = await this.findExistingAdmin(adminId);
+  async getCurrentAdmin(admin_id: string) {
+    const admin = await this.findExistingAdmin(admin_id);
     const store = await this.storesService.findStoreForAdminByStoreId(
-      admin.storeId,
+      admin.store_id,
     );
 
     return {
@@ -158,7 +158,7 @@ export class AdminService {
     const accessPayload: AdminAccessTokenPayload = {
       sub: admin.id,
       username: admin.username,
-      store_id: admin.storeId,
+      store_id: admin.store_id,
       token_type: 'admin_access',
     };
     const refreshPayload: AdminRefreshTokenPayload = {
@@ -187,14 +187,14 @@ export class AdminService {
       id: admin.id,
       username: admin.username,
       store: {
-        id: admin.storeId,
+        id: admin.store_id,
         name: store.name,
-        address: store.formattedAddress,
+        address: store.formatted_address,
         city: store.city,
         phone: store.phone,
-        opening_time: store.openingTime,
-        closing_time: store.closingTime,
-        is_active: store.isActive,
+        opening_time: store.opening_time,
+        closing_time: store.closing_time,
+        is_active: store.is_active,
       },
     };
   }
