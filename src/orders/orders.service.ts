@@ -21,6 +21,7 @@ import { Invoice } from '../invoices/entities/invoice.entity';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { StoresService } from '../stores/stores.service';
 import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
@@ -54,6 +55,19 @@ export interface AdminOrderSummary {
   scheduled_end_time: string | null;
   created_at: Date;
   status: OrderStatus;
+}
+
+export interface OrderStoreAddress {
+  name: string;
+  emedix_name: string;
+  address_line_1: string;
+  formatted_address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+  latitude: string;
+  longitude: string;
 }
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
@@ -94,6 +108,8 @@ export class OrdersService {
     private readonly orderItemRepository: Repository<OrderItem>,
     @InjectRepository(OrderDeliveryAddress)
     private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
+    @InjectRepository(Store)
+    private readonly storeRepository: Repository<Store>,
     private readonly invoicesService: InvoicesService,
     private readonly productsService: ProductsService,
     private readonly storesService: StoresService,
@@ -318,13 +334,33 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(order_id: number, user_id: string): Promise<Order> {
+  async getOrderById(order_id: number, user_id: string ): Promise<Order & { store_address: OrderStoreAddress | null }> {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, user_id: user_id },
       relations: ['items'],
     });
     if (!order) throw new NotFoundException('Order not found');
-    return order;
+
+    const store = await this.storeRepository.findOne({
+      where: { store_id: order.store_id },
+      select: {
+        name: true,
+        emedix_name: true,
+        address_line_1: true,
+        formatted_address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    return {
+      ...order,
+      store_address: store ? this.formatStoreAddress(store) : null,
+    };
   }
 
   async getAdminOrders(
@@ -754,6 +790,21 @@ export class OrdersService {
       country: address.country,
       latitude: String(address.latitude),
       longitude: String(address.longitude),
+    };
+  }
+
+  private formatStoreAddress(store: Store): OrderStoreAddress {
+    return {
+      name: store.name,
+      emedix_name: store.emedix_name,
+      address_line_1: store.address_line_1,
+      formatted_address: store.formatted_address,
+      city: store.city,
+      state: store.state,
+      pincode: store.pincode,
+      country: store.country,
+      latitude: String(store.latitude),
+      longitude: String(store.longitude),
     };
   }
 
