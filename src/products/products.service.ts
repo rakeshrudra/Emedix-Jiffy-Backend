@@ -36,7 +36,6 @@ export class ProductsService {
             .where('p.store_id = :store_id', { store_id: dto.store_id })
             .andWhere('p.status = :status', { status: ProductStatus.ENABLE })
             .andWhere('p.product_stock > 0')
-            .orderBy('p.product_name', 'ASC')
             .skip(skip)
             .take(limit);
 
@@ -45,6 +44,9 @@ export class ProductsService {
                 '(p.product_name LIKE :q OR p.product_composition LIKE :q)',
                 { q: `%${dto.q.trim()}%` },
             );
+            qb.orderBy('p.product_name', 'ASC');
+        } else {
+            qb.orderBy('RAND()');
         }
 
         const [data, total] = await qb.getManyAndCount();
