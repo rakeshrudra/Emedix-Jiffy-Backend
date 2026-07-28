@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { OrderDelivery } from '../../delivery/entities/order-delivery.entity';
-import { OrderDeliveryAddress } from './order-delivery-address.entity';
+import { OrderUserAddress } from './order-user-address.entity';
 
 export enum OrderStatus {
   PENDING = 'PENDING',
@@ -26,6 +26,11 @@ export enum OrderActor {
   ERP = 'ERP',
   SYSTEM = 'SYSTEM',
   STORE = 'STORE',
+}
+
+export enum FulfillmentType {
+  PICKUP = 'PICKUP',
+  DELIVERY = 'DELIVERY',
 }
 
 @Entity('orders')
@@ -52,6 +57,15 @@ export class Order {
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
 
+  @ApiProperty({ enum: FulfillmentType, example: FulfillmentType.PICKUP })
+  @Column({
+    name: 'fulfillment_type',
+    type: 'enum',
+    enum: FulfillmentType,
+    default: FulfillmentType.PICKUP,
+  })
+  fulfillment_type: FulfillmentType;
+
   // Client-generated UUID to prevent duplicate order creation on retry
   @Index({ unique: true })
   @Column({ name: 'idempotency_key' })
@@ -73,11 +87,11 @@ export class Order {
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
   total_amount: number;
 
-  @OneToOne(() => OrderDeliveryAddress, (address) => address.order, {
+  @OneToOne(() => OrderUserAddress, (address) => address.order, {
     cascade: true,
     eager: true,
   })
-  delivery_address: OrderDeliveryAddress;
+  user_address: OrderUserAddress;
 
   @Column({ name: 'prescription_urls', type: 'text', default: '' })
   prescription_urls: string;
@@ -106,7 +120,6 @@ export class Order {
   @Column({ name: 'invoice_number', default: '' })
   invoice_number: string;
 
-  // Set only when order is cancelled
   @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
   cancelled_at: Date;
 
