@@ -10,9 +10,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { Order, OrderActor, OrderStatus } from './entities/order.entity';
+import { FulfillmentType, Order, OrderActor, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
+import { OrderUserAddress } from './entities/order-user-address.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
@@ -25,6 +25,7 @@ import { Store } from '../stores/entities/store.entity';
 import { StoresService } from '../stores/stores.service';
 import { CartService } from '../cart/cart.service';
 import { AddressesService } from '../addresses/addresses.service';
+import { Address } from '../addresses/entities/address.entity';
 import { UsersService } from '../users/users.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OrdersGateway } from './orders.gateway';
@@ -35,7 +36,7 @@ export interface AdminOrderSummary {
   store_id: string;
   customer_name: string;
   customer_phone: string;
-  delivery_address: {
+  user_address: {
     label: string;
     address_line_1: string;
     address_line_2: string;
@@ -57,7 +58,7 @@ export interface AdminOrderSummary {
   status: OrderStatus;
 }
 
-export interface OrderStoreAddress {
+export interface OrderPickupAddress {
   name: string;
   emedix_name: string;
   address_line_1: string;
@@ -106,8 +107,8 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
-    @InjectRepository(OrderDeliveryAddress)
-    private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
+    @InjectRepository(OrderUserAddress)
+    private readonly orderUserAddressRepository: Repository<OrderUserAddress>,
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
     private readonly invoicesService: InvoicesService,
@@ -161,11 +162,27 @@ export class OrdersService {
       await this.storesService.assertOrderable(dto.store_id);
     }
 
-    // 4. Delivery address must belong to the user
+    // 4. User's saved address must belong to them — required for every
+    // order (PICKUP included) so we can track where the order was placed
+    // from. Only DELIVERY additionally requires the store to be able to
+    // reach it; delivery_radius_km is irrelevant to PICKUP.
     const address = await this.addressesService.findOwnedAddress(
       user_id,
-      dto.delivery_address_id,
+      dto.user_address_id,
     );
+
+    if (dto.fulfillment_type === FulfillmentType.DELIVERY) {
+      const reachability = await this.storesService.checkReachable(
+        dto.store_id,
+        Number(address.latitude),
+        Number(address.longitude),
+      );
+      if (!reachability.data.reachable) {
+        throw new BadRequestException(
+          'This store cannot deliver to the selected address. Please choose a different address or store.',
+        );
+      }
+    }
 
     // 5. Customer must exist
     const user = await this.usersService.findById(user_id);
@@ -228,7 +245,7 @@ export class OrdersService {
         });
       });
 
-      const deliveryAddress = this.orderDeliveryAddressRepository.create({
+      const userAddress = this.orderUserAddressRepository.create({
         source_address_id: address.id,
         label: address.label,
         address_line_1: address.address_line_1,
@@ -246,6 +263,7 @@ export class OrdersService {
         order_number: order_number,
         user_id: user_id,
         store_id: dto.store_id,
+        fulfillment_type: dto.fulfillment_type,
         status: OrderStatus.PENDING,
         idempotency_key: dto.idempotency_key,
         subtotal,
@@ -255,7 +273,7 @@ export class OrdersService {
         scheduled_date: dto.scheduled_date ?? null,
         scheduled_start_time: dto.scheduled_start_time ?? null,
         scheduled_end_time: dto.scheduled_end_time ?? null,
-        delivery_address: deliveryAddress,
+        user_address: userAddress,
         prescription_urls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
           : '',
@@ -334,7 +352,7 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(order_id: number, user_id: string ): Promise<Order & { store_address: OrderStoreAddress | null }> {
+  async getOrderById(order_id: number, user_id: string ): Promise<Order & { pickup_address: OrderPickupAddress | null }> {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, user_id: user_id },
       relations: ['items'],
@@ -359,7 +377,7 @@ export class OrdersService {
 
     return {
       ...order,
-      store_address: store ? this.formatStoreAddress(store) : null,
+      pickup_address: store ? this.formatPickupAddress(store) : null,
     };
   }
 
@@ -374,7 +392,7 @@ export class OrdersService {
 
     const [orders, total] = await this.orderRepository.findAndCount({
       where,
-      relations: ['delivery_address'],
+      relations: ['user_address'],
       order: { created_at: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -658,7 +676,7 @@ export class OrdersService {
 
     const orders = await this.orderRepository.find({
       where,
-      relations: ['items', 'delivery_address'],
+      relations: ['items', 'user_address'],
       order: { created_at: 'ASC' },
     });
 
@@ -778,7 +796,7 @@ export class OrdersService {
     return `${prefix}${seq.toString().padStart(4, '0')}`;
   }
 
-  private formatAdminDeliveryAddress(address: OrderDeliveryAddress) {
+  private formatUserAddress(address: OrderUserAddress) {
     return {
       label: address.label,
       address_line_1: address.address_line_1,
@@ -793,7 +811,7 @@ export class OrdersService {
     };
   }
 
-  private formatStoreAddress(store: Store): OrderStoreAddress {
+  private formatPickupAddress(store: Store): OrderPickupAddress {
     return {
       name: store.name,
       emedix_name: store.emedix_name,
@@ -822,8 +840,8 @@ export class OrdersService {
       store_id: order.store_id,
       customer_name: user?.name ?? '',
       customer_phone: user?.mobile_no ?? '',
-      delivery_address: order.delivery_address
-        ? this.formatAdminDeliveryAddress(order.delivery_address)
+      user_address: order.user_address
+        ? this.formatUserAddress(order.user_address)
         : null,
       subtotal: this.formatMoney(order.subtotal),
       discount: this.formatMoney(order.discount),

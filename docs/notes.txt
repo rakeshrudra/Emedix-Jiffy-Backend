@@ -1,0 +1,9 @@
+fulfillment_type - PICKUP | DELIVERY
+
+For Delivery
+delivery address - user's address
+store address
+
+For Pickup
+user address
+pickup address - store's address

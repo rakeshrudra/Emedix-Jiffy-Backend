@@ -110,7 +110,7 @@ export class EmedixWebhookService {
 
     // ─── Private helpers ────────────────────────────────────────────────────────
     private formatOrderForErp(order: Order, user?: User) {
-        const address = order.delivery_address;
+        const address = order.user_address;
 
         return {
             order_no: order.order_number,

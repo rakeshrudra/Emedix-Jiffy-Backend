@@ -65,39 +65,19 @@ export class StoresService {
 
   /**
    * GET /api/stores/nearest?lat=&lng=
-   * Returns the single nearest active store whose delivery radius covers the user's location.
-   * Uses the Haversine formula via a raw query for accurate distance.
-   */
+   * Returns all active stores ordered by distance ascending (closest first).
+  */
   async findNearest(lat: number, lng: number) {
     this.assertValidCoordinates(lat, lng);
-    const results = await this.haversineQuery(lat, lng, 1);
+    const results = await this.haversineQuery(lat, lng);
 
     if (results.length === 0) {
       return {
         success: false,
         message: 'No pharmacy available in your area. We are expanding soon!',
-        data: null,
+        data: [],
       };
     }
-
-    const store = results[0];
-    return {
-      success: true,
-      data: {
-        ...store,
-        is_open: this.isStoreOpenAt(store.opening_time, store.closing_time),
-      },
-    };
-  }
-
-  /**
-   * GET /api/stores/reachable?lat=&lng=
-   * Returns all active stores whose delivery radius covers the user's location.
-   * Ordered by distance (closest first).
-   */
-  async findReachable(lat: number, lng: number) {
-    this.assertValidCoordinates(lat, lng);
-    const results = await this.haversineQuery(lat, lng);
 
     return {
       success: true,
@@ -105,6 +85,39 @@ export class StoresService {
         ...s,
         is_open: this.isStoreOpenAt(s.opening_time, s.closing_time),
       })),
+    };
+  }
+
+  /**
+   * GET /api/stores/reachable?store_id=&lat=&lng=
+   * Delivery-only check: can the given store deliver to the given address?
+   * Compares the Haversine distance between the store and the address
+   * against the store's delivery_radius_km.
+   */
+  async checkReachable(store_id: string, lat: number, lng: number) {
+    this.assertValidCoordinates(lat, lng);
+
+    const store = await this.storeRepository.findOne({ where: { store_id } });
+    if (!store || !store.is_active) {
+      throw new BadRequestException('This store is currently unavailable. Please try again later.');
+    }
+
+    const distance_km = this.haversineDistance(
+      lat,
+      lng,
+      Number(store.latitude),
+      Number(store.longitude),
+    );
+    const delivery_radius_km = Number(store.delivery_radius_km);
+    const reachable = distance_km <= delivery_radius_km;
+
+    return {
+      success: true,
+      data: {
+        reachable,
+        distance_km: Math.round(distance_km * 100) / 100,
+        delivery_radius_km,
+      },
     };
   }
 
@@ -211,8 +224,9 @@ export class StoresService {
 
   /**
    * Haversine distance query.
-   * Filters active stores whose delivery_radius_km covers the given lat/lng.
-   * Returns at most `limit` results ordered by distance asc.
+   * Returns all active stores ordered by distance asc (no radius cutoff —
+   * every store is a valid pickup option; radius is only enforced per-store
+   * for delivery via checkReachable).
    */
   private async haversineQuery(lat: number, lng: number, limit?: number) {
     const limitClause = limit ? `LIMIT ${limit}` : '';
@@ -233,7 +247,6 @@ export class StoresService {
         ) AS distance_km
       FROM stores
       WHERE is_active = 1
-      HAVING distance_km <= delivery_radius_km
       ORDER BY distance_km ASC
       ${limitClause}
       `,
@@ -260,6 +273,22 @@ export class StoresService {
       closing_time: r.closing_time ?? null,
       is_active: Boolean(r.is_active),
     }));
+  }
+
+  /**
+   * Haversine distance in km between two coordinates, computed in JS.
+   * Used for single store/address pair checks (checkReachable) where a
+   * full-table SQL query would be overkill.
+   */
+  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   /**

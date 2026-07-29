@@ -47,16 +47,18 @@ export class StoresController {
 
   /**
    * GET /api/stores/nearest?lat=&lng=
-   * Returns the nearest active store covering the user's location.
-   * is_open flag indicates whether the store is currently open (IST).
+   * Returns ALL active stores ordered by distance ascending (closest first).
+   * No delivery-radius cutoff — called at app start before the user has
+   * chosen pickup or delivery. Client shows the list and defaults to the
+   * first (nearest) store; is_open flag indicates current opening status (IST).
    */
   @Get('nearest')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get nearest active store for a location' })
+  @ApiOperation({ summary: 'Get all active stores for a location, ordered by distance' })
   @ApiQuery({ name: 'lat', required: true, example: 30.3165 })
   @ApiQuery({ name: 'lng', required: true, example: 78.0322 })
-  @ApiResponse({ status: 200, description: 'Nearest store returned (null if none in range)' })
+  @ApiResponse({ status: 200, description: 'Stores ordered by distance ascending (empty if none active)' })
   async findNearest(
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
@@ -65,22 +67,25 @@ export class StoresController {
   }
 
   /**
-   * GET /api/stores/reachable?lat=&lng=
-   * Returns all active stores whose delivery radius covers the location.
-   * Ordered by distance ascending. Used for manual store switching.
+   * GET /api/stores/reachable?store_id=&lat=&lng=
+   * Delivery-only check: can this store deliver to this address?
+   * Called at cart checkout when fulfillment_type is DELIVERY, with the
+   * chosen delivery address's coordinates. Not used for PICKUP.
    */
   @Get('reachable')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all stores reachable from a location (ordered by distance)' })
+  @ApiOperation({ summary: 'Check whether a store can deliver to a given address (delivery only)' })
+  @ApiQuery({ name: 'store_id', required: true, example: '001' })
   @ApiQuery({ name: 'lat', required: true, example: 30.3165 })
   @ApiQuery({ name: 'lng', required: true, example: 78.0322 })
-  @ApiResponse({ status: 200, description: 'List of reachable stores' })
-  async findReachable(
+  @ApiResponse({ status: 200, description: 'reachable flag plus distance_km and delivery_radius_km' })
+  async checkReachable(
+    @Query('store_id') store_id: string,
     @Query('lat', ParseFloatPipe) lat: number,
     @Query('lng', ParseFloatPipe) lng: number,
   ) {
-    return this.storesService.findReachable(lat, lng);
+    return this.storesService.checkReachable(store_id, lat, lng);
   }
 
   /**
