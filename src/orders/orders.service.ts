@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { FulfillmentType, Order, OrderActor, OrderStatus } from './entities/order.entity';
@@ -69,6 +69,17 @@ export interface OrderPickupAddress {
   country: string;
   latitude: string;
   longitude: string;
+}
+
+export interface OrderListItem {
+  id: number;
+  order_number: string;
+  status: OrderStatus;
+  total_amount: string;
+  created_at: Date;
+  item_count: number;
+  user_address: { city: string; state: string } | null;
+  pickup_address: { emedix_name: string; name: string; city: string; state: string } | null;
 }
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
@@ -162,10 +173,7 @@ export class OrdersService {
       await this.storesService.assertOrderable(dto.store_id);
     }
 
-    // 4. User's saved address must belong to them — required for every
-    // order (PICKUP included) so we can track where the order was placed
-    // from. Only DELIVERY additionally requires the store to be able to
-    // reach it; delivery_radius_km is irrelevant to PICKUP.
+    // 4. User's saved address must belong to them
     const address = await this.addressesService.findOwnedAddress(
       user_id,
       dto.user_address_id,
@@ -341,18 +349,58 @@ export class OrdersService {
     user_id: string,
     page: number,
     limit: number,
-  ): Promise<{ data: Order[]; total: number; page: number; pages: number }> {
-    const [data, total] = await this.orderRepository.findAndCount({
-      where: { user_id: user_id },
-      order: { created_at: 'DESC' },
-      relations: ['items'],
-      skip: (page - 1) * limit,
-      take: limit,
+  ): Promise<{
+    data: OrderListItem[];
+    total: number;
+    page: number;
+    pages: number;
+  }> {
+    const [orders, total] = await this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.user_address', 'user_address')
+      .loadRelationCountAndMap('order.item_count', 'order.items')
+      .where('order.user_id = :user_id', { user_id })
+      .orderBy('order.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    const storeIds = [...new Set(orders.map((order) => order.store_id))];
+    const stores = storeIds.length
+      ? await this.storeRepository.find({
+        where: { store_id: In(storeIds) },
+        select: { store_id: true, emedix_name: true, name: true, city: true, state: true },
+      })
+      : [];
+    const storesById = new Map(stores.map((store) => [store.store_id, store]));
+
+    const data: OrderListItem[] = orders.map((order) => {
+      const store = storesById.get(order.store_id);
+      return {
+        id: order.id,
+        order_number: order.order_number,
+        status: order.status,
+        total_amount: order.total_amount as unknown as string,
+        created_at: order.created_at,
+        item_count: (order as unknown as { item_count: number }).item_count,
+        user_address: order.user_address
+          ? { city: order.user_address.city, state: order.user_address.state }
+          : null,
+        pickup_address: store
+          ? {
+            emedix_name: store.emedix_name,
+            name: store.name,
+            city: store.city,
+            state: store.state,
+          }
+          : null,
+      };
     });
+
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(order_id: number, user_id: string ): Promise<Order & { pickup_address: OrderPickupAddress | null }> {
+  async getOrderById(order_id: number, user_id: string): Promise<Order & { pickup_address: OrderPickupAddress | null }> {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, user_id: user_id },
       relations: ['items'],
