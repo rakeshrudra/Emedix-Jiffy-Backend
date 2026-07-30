@@ -70,15 +70,15 @@ export class OrdersController {
     summary: 'Get order history for authenticated user (paginated)',
   })
   @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 10 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'Order list returned' })
   async getMyOrders(
     @Request() req,
     @Query('page') page = '1',
-    @Query('limit') limit = '10',
+    @Query('limit') limit = '20',
   ) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
-    const parsedLimit = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+    const parsedLimit = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const result = await this.ordersService.getOrdersByUser(
       req.user?.sub ?? (req.headers['x-user-id'] as string),
       parsedPage,

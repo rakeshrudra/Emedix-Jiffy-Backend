@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.module';
 
 export interface GeocodeResult {
   formatted_address: string;
@@ -79,10 +82,22 @@ export class MapsService {
   private readonly autocompleteUrl = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
   private readonly placeDetailsUrl = 'https://maps.googleapis.com/maps/api/place/details/json';
 
-  constructor(private readonly configService: ConfigService) { }
+  private readonly CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+  ) { }
 
   async reverseGeocode(latitude: number, longitude: number): Promise<GeocodeResult> {
     this.assertValidCoordinates(latitude, longitude);
+
+    const roundedLat = latitude.toFixed(4);
+    const roundedLng = longitude.toFixed(4);
+    const cacheKey = `maps:reverse-geocode:${roundedLat},${roundedLng}`;
+
+    const cached = await this.getCached<GeocodeResult>(cacheKey);
+    if (cached) return cached;
 
     const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
     try {
@@ -91,7 +106,9 @@ export class MapsService {
         timeout: 8000,
       });
       this.assertGeocodeStatus(response.data, 'Unable to resolve address from coordinates');
-      return this.extractGeoFields(response.data, latitude, longitude);
+      const result = this.extractGeoFields(response.data, latitude, longitude);
+      await this.setCached(cacheKey, result);
+      return result;
     } catch (err) {
       if (err instanceof InternalServerErrorException) throw err;
       this.handleAxiosError(err as AxiosError, 'reverse geocoding');
@@ -99,6 +116,10 @@ export class MapsService {
   }
 
   async forwardGeocode(addressString: string): Promise<GeocodeResult> {
+    const cacheKey = `maps:geocode:${addressString.trim().toLowerCase()}`;
+    const cached = await this.getCached<GeocodeResult>(cacheKey);
+    if (cached) return cached;
+
     const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
     try {
       const response = await axios.get<GoogleGeocodeResponse>(this.geocodingUrl, {
@@ -107,7 +128,9 @@ export class MapsService {
       });
       this.assertGeocodeStatus(response.data, 'Address not found. Please check and try again.');
       const { lat, lng } = response.data.results[0].geometry.location;
-      return this.extractGeoFields(response.data, lat, lng);
+      const result = this.extractGeoFields(response.data, lat, lng);
+      await this.setCached(cacheKey, result);
+      return result;
     } catch (err) {
       if (err instanceof InternalServerErrorException) throw err;
       this.handleAxiosError(err as AxiosError, 'forward geocoding');
@@ -135,6 +158,10 @@ export class MapsService {
   }
 
   async placeDetails(placeId: string): Promise<PlaceDetailsResult> {
+    const cacheKey = `maps:place-details:${placeId}`;
+    const cached = await this.getCached<PlaceDetailsResult>(cacheKey);
+    if (cached) return cached;
+
     const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
     try {
       const response = await axios.get<GooglePlaceDetailsResponse>(this.placeDetailsUrl, {
@@ -166,7 +193,7 @@ export class MapsService {
         get('sublocality_level_1') ||
         '';
 
-      return {
+      const result_ = {
         place_id: placeId,
         formatted_address: result.formatted_address,
         address_line_2: result.name,
@@ -177,6 +204,8 @@ export class MapsService {
         latitude: lat,
         longitude: lng,
       };
+      await this.setCached(cacheKey, result_);
+      return result_;
     } catch (err) {
       if (err instanceof InternalServerErrorException) throw err;
       this.handleAxiosError(err as AxiosError, 'place details');
@@ -184,6 +213,24 @@ export class MapsService {
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  private async getCached<T>(key: string): Promise<T | null> {
+    try {
+      const raw = await this.redis.get(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch (err) {
+      this.logger.warn(`Maps cache read failed for ${key}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private async setCached(key: string, value: unknown): Promise<void> {
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', this.CACHE_TTL_SECONDS);
+    } catch (err) {
+      this.logger.warn(`Maps cache write failed for ${key}: ${(err as Error).message}`);
+    }
+  }
 
   private assertValidCoordinates(lat: number, lng: number): void {
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
