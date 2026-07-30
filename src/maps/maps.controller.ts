@@ -14,12 +14,13 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { MapsService } from './maps.service';
 
 @ApiTags('Maps')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ThrottlerGuard)
 @Controller('api/maps')
 export class MapsController {
   constructor(private readonly mapsService: MapsService) { }
@@ -30,6 +31,7 @@ export class MapsController {
    * Frontend uses the returned place_id to call /place-details.
    */
   @Get('autocomplete')
+  @Throttle({ default: { limit: 20, ttl: 10_000 } })
   @ApiOperation({ summary: 'Get address autocomplete suggestions (India)' })
   @ApiQuery({ name: 'input', required: true, example: 'Rajpur Road, Dehradun' })
   @ApiResponse({ status: 200, description: 'List of place suggestions' })
