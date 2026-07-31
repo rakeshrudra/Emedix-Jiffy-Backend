@@ -4,13 +4,17 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  ManyToOne,
   OneToMany,
   OneToOne,
+  JoinColumn,
   Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { OrderDelivery } from '../../delivery/entities/order-delivery.entity';
 import { OrderUserAddress } from './order-user-address.entity';
+import { User } from '../../users/entities/user.entity';
+import { Store } from '../../stores/entities/store.entity';
 
 export enum OrderStatus {
   PENDING = 'PENDING',
@@ -48,10 +52,18 @@ export class Order {
   @Column({ name: 'store_id' })
   store_id: string;
 
+  @ManyToOne(() => Store, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'store_id', referencedColumnName: 'store_id' })
+  store: Store;
+
   @ApiProperty({ example: 'uuid-of-user' })
   @Index()
   @Column({ name: 'user_id' })
   user_id: string;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'user_id' })
+  user: User;
 
   @ApiProperty({ enum: OrderStatus, example: OrderStatus.PENDING })
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })

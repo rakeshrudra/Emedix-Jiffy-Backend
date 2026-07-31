@@ -7,7 +7,10 @@ import {
     UpdateDateColumn,
     Unique,
     Index,
+    ManyToOne,
+    JoinColumn,
 } from 'typeorm';
+import { Store } from '../../stores/entities/store.entity';
 
 export enum ProductStatus {
     ENABLE = 'Enable',
@@ -24,6 +27,10 @@ export class Product {
     @ApiProperty({ example: '001' })
     @Column({ name: 'store_id' })
     store_id: string;
+
+    @ManyToOne(() => Store, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'store_id', referencedColumnName: 'store_id' })
+    store: Store;
 
     @ApiProperty({ example: 'Paracetamol 500mg Tablet' })
     @Index()

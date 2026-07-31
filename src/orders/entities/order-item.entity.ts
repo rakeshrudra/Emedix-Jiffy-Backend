@@ -3,6 +3,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  JoinColumn,
   ManyToOne,
 } from 'typeorm';
 import { Order } from './order.entity';
@@ -13,7 +14,11 @@ export class OrderItem {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'order_id' })
+  order_id: number;
+
   @ManyToOne(() => Order, (order) => order.items, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'order_id' })
   order: Order;
 
   @ApiProperty({ example: 'MED10001' })

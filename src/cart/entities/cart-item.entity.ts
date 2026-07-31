@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -14,7 +15,11 @@ export class CartItem {
   id: number;
 
   @Index()
+  @Column({ name: 'cart_id', nullable: true })
+  cart_id: string;
+
   @ManyToOne(() => Cart, (cart) => cart.items, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'cart_id' })
   cart: Cart;
 
   @Column({ name: 'product_code' })
