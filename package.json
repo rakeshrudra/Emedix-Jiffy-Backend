@@ -21,7 +21,8 @@
     "migration:generate": "npx typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:run": "npx typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "npx typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "seed:stores": "ts-node -r tsconfig-paths/register src/database/seed-stores.ts"
+    "seed:stores": "ts-node -r tsconfig-paths/register src/database/seed-stores.ts",
+    "backfill:store-coordinates": "ts-node -r tsconfig-paths/register src/database/backfill-store-coordinates.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
