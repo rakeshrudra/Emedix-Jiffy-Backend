@@ -189,6 +189,7 @@ export class AdminService {
       store: {
         id: admin.store_id,
         name: store.name,
+        emedix_name: store.emedix_name,
         address: store.formatted_address,
         city: store.city,
         phone: store.phone,

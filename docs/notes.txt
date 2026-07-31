@@ -7,3 +7,51 @@ store address
 For Pickup
 user address
 pickup address - store's address
+
+Found 44 store(s) with missing coordinates.
+Store 1 has no emedix_name — skipped.
+EMEDIX SMART PHARMACY - Tupudana, Ranchi (6): 23.2663107, 85.307159 [dry-run]
+EMEDIX SMART PHARMACY - Kishoreganj Chowk (7): 23.3702196, 85.31297599999999 [dry-run]
+EMEDIX SMART PHARMACY - Bhurbhura More, Deoghar (8): 24.5047103, 86.71076509999999 [dry-run]
+EMEDIX SMART PHARMACY - Patepur road, Mahua (9): 25.8175823, 85.3988426 [dry-run]
+EMEDIX SMART PHARMACY - Dhanbad (10): 23.7923325, 86.4234883 [dry-run]
+EMEDIX SMART PHARMACY - Gola Road (11): 25.6111522, 85.0587824 [dry-run]
+EMEDIX SMART PHARMACY - Bikram (12): 25.4437329, 84.85214859999999 [dry-run]
+EMEDIX SMART PHARMACY - Muharram Chowk (13): 26.8018315, 84.5162751 [dry-run]
+EMEDIX SMART PHARMACY - Sherghati (14): 24.5624614, 84.7927799 [dry-run]
+EMEDIX SMART PHARMACY - Mohanpur, Samastipur (15): 25.848334, 85.77265299999999 [dry-run]
+EMEDIX SMART PHARMACY - Kahalgaon, Bhagalpur (16): 25.2580357, 87.232238 [dry-run]
+EMEDIX SMART PHARMACY - Parsagarh Bazar (17): 26.0037851, 84.5642256 [dry-run]
+EMEDIX SMART PHARMACY - Bartand,Dhanbad (18): 23.8092556, 86.4326432 [dry-run]
+EMEDIX SMART PHARMACY - Godhna Road (19): 25.5404169, 84.664352 [dry-run]
+EMEDIX SMART PHARMACY - Simrahi Bazar (20): 26.3099681, 86.84428299999999 [dry-run]
+EMEDIX SMART PHARMACY - Sakchi, Jamshedpur (21): 22.8213929, 86.1664289 [dry-run]
+EMEDIX SMART PHARMACY - Bariatu (22): 23.3907867, 85.3436862 [dry-run]
+Store 23 has no emedix_name — skipped.
+Store 24 has no emedix_name — skipped.
+Store 25 has no emedix_name — skipped.
+EMEDIX SMART PHARMACY - Choti Kalyani, Muzaffarpur (26): 26.1190813, 85.39366249999999 [dry-run]
+EMEDIX SMART PHARMACY - Malahi Pakri, Patna (27): 25.5921413, 85.1568363 [dry-run]
+EMEDIX SMART PHARMACY - Gomia (28): 23.7968687, 85.8345566 [dry-run]
+EMEDIX SMART PHARMACY - Changar More Bypass (29): 25.5833676, 85.1471071 [dry-run]
+Store 30 has no emedix_name — skipped.
+Store 31 has no emedix_name — skipped.
+EMEDIX SMART PHARMACY - Motipur, Muzaffarpur (32): 26.2565589, 85.161706 [dry-run]
+EMEDIX SMART PHARMACY - Kotwali Chowk,Bettiah (33): 26.7970213, 84.4957821 [dry-run]
+EMEDIX SMART PHARMACY - Mubarakpur,Danapur (34): 25.6235433, 85.03313519999999 [dry-run]
+EMEDIX SMART PHARMACY - Tribhuvan More (35): 25.5996761, 85.0406699 [dry-run]
+EMEDIX SMART PHARMACY - Sonari, Jamesdpur (36): 22.8213929, 86.1664289 [dry-run]
+Store 37 has no emedix_name — skipped.
+EMEDIX SMART PHARMACY - Gardanibagh (38): 25.5901295, 85.1197055 [dry-run]
+No geocode result for "EMEDIX SMART PHARMACY - Ashinya Nagar" (store_id 39) — skipped.
+Store 40 has no emedix_name — skipped.
+Store 41 has no emedix_name — skipped.
+Store 42 has no emedix_name — skipped.
+Store 43 has no emedix_name — skipped.
+Store 44 has no emedix_name — skipped.
+EMEDIX SMART PHARMACY - Housing Colony Kankarbagh (45): 25.5921413, 85.1568363 [dry-run]
+EMEDIX SMART PHARMACY - Ramdayalu (46): 26.1015383, 85.38955709999999 [dry-run]
+EMEDIX SMART PHARMACY - Sirsiya, Giridih (47): 24.2046822, 86.3118197 [dry-run]
+EMEDIX SMART PHARMACY - Supriya Cinema Chowk (48): 26.8061514, 84.51016489999999 [dry-run]
+
+Done. 31 updated, 13 skipped (no result), 0 failed. (dry-run — no rows were saved)
