@@ -12,7 +12,7 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { FulfillmentType, Order, OrderActor, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { OrderUserAddress } from './entities/order-user-address.entity';
+import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateAdminOrderItemsDto } from './dto/update-admin-order-items.dto';
 import { UpdateAdminOrderStatusDto } from './dto/update-admin-order-status.dto';
@@ -36,18 +36,8 @@ export interface AdminOrderSummary {
   store_id: string;
   customer_name: string;
   customer_phone: string;
-  user_address: {
-    label: string;
-    address_line_1: string;
-    address_line_2: string;
-    formatted_address: string;
-    city: string;
-    state: string;
-    pincode: string;
-    country: string;
-    latitude: string;
-    longitude: string;
-  } | null;
+  recipient_name: string;
+  recipient_mobile_number: string;
   subtotal: string;
   discount: string;
   total_amount: string;
@@ -78,7 +68,8 @@ export interface OrderListItem {
   total_amount: string;
   created_at: Date;
   item_count: number;
-  user_address: { city: string; state: string } | null;
+  recipient_name: string;
+  recipient_mobile_number: string;
   pickup_address: { emedix_name: string; name: string; city: string; state: string } | null;
 }
 
@@ -118,8 +109,8 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
-    @InjectRepository(OrderUserAddress)
-    private readonly orderUserAddressRepository: Repository<OrderUserAddress>,
+    @InjectRepository(OrderDeliveryAddress)
+    private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
     private readonly invoicesService: InvoicesService,
@@ -174,16 +165,18 @@ export class OrdersService {
     }
 
     // 4. User's saved address must belong to them
-    const address = await this.addressesService.findOwnedAddress(
-      user_id,
-      dto.user_address_id,
-    );
+    let deliveryAddress: Address | null = null;
 
     if (dto.fulfillment_type === FulfillmentType.DELIVERY) {
+      deliveryAddress = await this.addressesService.findOwnedAddress(
+        user_id,
+        dto.user_address_id,
+      );
+
       const reachability = await this.storesService.checkReachable(
         dto.store_id,
-        Number(address.latitude),
-        Number(address.longitude),
+        Number(deliveryAddress.latitude),
+        Number(deliveryAddress.longitude),
       );
       if (!reachability.data.reachable) {
         throw new BadRequestException(
@@ -253,19 +246,21 @@ export class OrdersService {
         });
       });
 
-      const userAddress = this.orderUserAddressRepository.create({
-        source_address_id: address.id,
-        label: address.label,
-        address_line_1: address.address_line_1,
-        address_line_2: address.address_line_2,
-        formatted_address: address.formatted_address,
-        city: address.city,
-        state: address.state,
-        pincode: address.pincode,
-        country: address.country,
-        latitude: address.latitude,
-        longitude: address.longitude,
-      });
+      const orderDeliveryAddress = deliveryAddress
+        ? this.orderDeliveryAddressRepository.create({
+          source_address_id: deliveryAddress.id,
+          label: deliveryAddress.label,
+          address_line_1: deliveryAddress.address_line_1,
+          address_line_2: deliveryAddress.address_line_2,
+          formatted_address: deliveryAddress.formatted_address,
+          city: deliveryAddress.city,
+          state: deliveryAddress.state,
+          pincode: deliveryAddress.pincode,
+          country: deliveryAddress.country,
+          latitude: deliveryAddress.latitude,
+          longitude: deliveryAddress.longitude,
+        })
+        : null;
 
       const order = this.orderRepository.create({
         order_number: order_number,
@@ -281,7 +276,9 @@ export class OrdersService {
         scheduled_date: dto.scheduled_date ?? null,
         scheduled_start_time: dto.scheduled_start_time ?? null,
         scheduled_end_time: dto.scheduled_end_time ?? null,
-        user_address: userAddress,
+        recipient_name: dto.recipient_name,
+        recipient_mobile_number: dto.recipient_mobile_number,
+        delivery_address: orderDeliveryAddress,
         prescription_urls: dto.prescription_urls
           ? JSON.stringify(dto.prescription_urls)
           : '',
@@ -357,7 +354,6 @@ export class OrdersService {
   }> {
     const [orders, total] = await this.orderRepository
       .createQueryBuilder('order')
-      .leftJoinAndSelect('order.user_address', 'user_address')
       .loadRelationCountAndMap('order.item_count', 'order.items')
       .where('order.user_id = :user_id', { user_id })
       .orderBy('order.created_at', 'DESC')
@@ -383,9 +379,8 @@ export class OrdersService {
         total_amount: order.total_amount as unknown as string,
         created_at: order.created_at,
         item_count: (order as unknown as { item_count: number }).item_count,
-        user_address: order.user_address
-          ? { city: order.user_address.city, state: order.user_address.state }
-          : null,
+        recipient_name: order.recipient_name,
+        recipient_mobile_number: order.recipient_mobile_number,
         pickup_address: store
           ? {
             emedix_name: store.emedix_name,
@@ -440,7 +435,6 @@ export class OrdersService {
 
     const [orders, total] = await this.orderRepository.findAndCount({
       where,
-      relations: ['user_address'],
       order: { created_at: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -724,7 +718,7 @@ export class OrdersService {
 
     const orders = await this.orderRepository.find({
       where,
-      relations: ['items', 'user_address'],
+      relations: ['items', 'delivery_address'],
       order: { created_at: 'ASC' },
     });
 
@@ -844,21 +838,6 @@ export class OrdersService {
     return `${prefix}${seq.toString().padStart(4, '0')}`;
   }
 
-  private formatUserAddress(address: OrderUserAddress) {
-    return {
-      label: address.label,
-      address_line_1: address.address_line_1,
-      address_line_2: address.address_line_2,
-      formatted_address: address.formatted_address,
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-      country: address.country,
-      latitude: String(address.latitude),
-      longitude: String(address.longitude),
-    };
-  }
-
   private formatPickupAddress(store: Store): OrderPickupAddress {
     return {
       name: store.name,
@@ -888,9 +867,8 @@ export class OrdersService {
       store_id: order.store_id,
       customer_name: user?.name ?? '',
       customer_phone: user?.mobile_no ?? '',
-      user_address: order.user_address
-        ? this.formatUserAddress(order.user_address)
-        : null,
+      recipient_name: order.recipient_name,
+      recipient_mobile_number: order.recipient_mobile_number,
       subtotal: this.formatMoney(order.subtotal),
       discount: this.formatMoney(order.discount),
       total_amount: this.formatMoney(order.total_amount),

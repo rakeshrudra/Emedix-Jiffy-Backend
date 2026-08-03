@@ -8,12 +8,12 @@ import {
 } from 'typeorm';
 import { Order } from './order.entity';
 
-@Entity('order_user_addresses')
-export class OrderUserAddress {
+@Entity('order_delivery_addresses')
+export class OrderDeliveryAddress {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @OneToOne(() => Order, (order) => order.user_address, { onDelete: 'CASCADE' })
+    @OneToOne(() => Order, (order) => order.delivery_address, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'order_id' })
     order: Order;
 
