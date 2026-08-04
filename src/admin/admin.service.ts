@@ -13,11 +13,13 @@ import { StoresService } from '../stores/stores.service';
 import { Store } from '../stores/entities/store.entity';
 import { AdminSignupDto } from './dto/admin-signup.dto';
 import { Admin } from './entities/admin.entity';
+import { AdminRole } from './enums/admin-role.enum';
 
 interface AdminAccessTokenPayload {
   sub: string;
   username: string;
-  store_id: string;
+  store_id: string | null;
+  role: AdminRole;
   token_type: 'admin_access';
 }
 
@@ -88,9 +90,7 @@ export class AdminService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const store = await this.storesService.findStoreForAdminByStoreId(
-      admin.store_id,
-    );
+    const store = await this.findAdminStoreForProfile(admin);
     const tokens = this.issueTokens(admin);
 
     return {
@@ -118,7 +118,7 @@ export class AdminService {
     }
 
     const admin = await this.findExistingAdmin(payload.sub);
-    await this.storesService.findStoreForAdminByStoreId(admin.store_id);
+    await this.findAdminStoreForProfile(admin);
 
     return {
       success: true,
@@ -128,9 +128,7 @@ export class AdminService {
 
   async getCurrentAdmin(admin_id: string) {
     const admin = await this.findExistingAdmin(admin_id);
-    const store = await this.storesService.findStoreForAdminByStoreId(
-      admin.store_id,
-    );
+    const store = await this.findAdminStoreForProfile(admin);
 
     return {
       success: true,
@@ -159,6 +157,7 @@ export class AdminService {
       sub: admin.id,
       username: admin.username,
       store_id: admin.store_id,
+      role: admin.role,
       token_type: 'admin_access',
     };
     const refreshPayload: AdminRefreshTokenPayload = {
@@ -182,11 +181,24 @@ export class AdminService {
     return username.trim().toLowerCase();
   }
 
-  private formatAdminProfile(admin: Admin, store: Store) {
+  private async findAdminStoreForProfile(admin: Admin): Promise<Store | null> {
+    if (admin.role === AdminRole.SUPER_ADMIN && !admin.store_id) {
+      return null;
+    }
+
+    if (!admin.store_id) {
+      throw new UnauthorizedException('Admin is not assigned to a store');
+    }
+
+    return this.storesService.findStoreForAdminByStoreId(admin.store_id);
+  }
+
+  private formatAdminProfile(admin: Admin, store: Store | null) {
     return {
       id: admin.id,
       username: admin.username,
-      store: {
+      role: admin.role,
+      store: store ? {
         id: admin.store_id,
         name: store.name,
         emedix_name: store.emedix_name,
@@ -196,7 +208,7 @@ export class AdminService {
         opening_time: store.opening_time,
         closing_time: store.closing_time,
         is_active: store.is_active,
-      },
+      } : null,
     };
   }
 }

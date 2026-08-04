@@ -7,6 +7,7 @@ import {
   Param,
   ParseFloatPipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -22,7 +23,12 @@ import {
 } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { AdminRole } from '../admin/enums/admin-role.enum';
 import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreAdminDto } from './dto/update-store-admin.dto';
 import { StoresService } from './stores.service';
 
 @ApiTags('Stores')
@@ -101,5 +107,62 @@ export class StoresController {
   @ApiResponse({ status: 404, description: 'Store not found' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.storesService.findOne(id);
+  }
+}
+
+@ApiTags('Super Admin Stores')
+@ApiBearerAuth()
+@UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
+@Roles(AdminRole.SUPER_ADMIN)
+@Controller('api/admin/super/stores')
+export class SuperAdminStoresController {
+  constructor(private readonly storesService: StoresService) {}
+
+  /**
+   * GET /api/admin/super/stores
+   * Returns all stores for the Super Admin table.
+   */
+  @Get()
+  @ApiOperation({ summary: 'Get all stores for Super Admin' })
+  @ApiResponse({ status: 200, description: 'All stores returned' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Super Admin access required' })
+  async findAll() {
+    return this.storesService.findAllForSuperAdmin();
+  }
+
+  /**
+   * GET /api/admin/super/stores/:store_id
+   * Returns complete details for one selected store.
+   */
+  @Get(':store_id')
+  @ApiOperation({ summary: 'Get one store for Super Admin' })
+  @ApiParam({ name: 'store_id', description: 'ERP store ID' })
+  @ApiResponse({ status: 200, description: 'Store details returned' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Super Admin access required' })
+  @ApiResponse({ status: 404, description: 'Store not found' })
+  async findOne(@Param('store_id') store_id: string) {
+    return this.storesService.findOneForSuperAdmin(store_id);
+  }
+
+  /**
+   * PATCH /api/admin/super/stores/:store_id
+   * Partially updates store management fields. The table status toggle can
+   * call this endpoint with only is_active.
+   */
+  @Patch(':store_id')
+  @ApiOperation({ summary: 'Update one store for Super Admin' })
+  @ApiParam({ name: 'store_id', description: 'ERP store ID' })
+  @ApiResponse({ status: 200, description: 'Store updated' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Super Admin access required' })
+  @ApiResponse({ status: 404, description: 'Store not found' })
+  async update(
+    @Param('store_id') store_id: string,
+    @Body() dto: UpdateStoreAdminDto,
+  ) {
+    return this.storesService.updateForSuperAdmin(store_id, dto);
   }
 }

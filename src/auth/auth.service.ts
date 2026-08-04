@@ -45,6 +45,10 @@ export class AuthService {
     const mobile_no = phoneNumber.replace(/^\+91/, '');
     const firebase_uid = decodedToken.uid;
 
+    if (!/^\d{10}$/.test(mobile_no)) {
+      throw new UnauthorizedException('Phone number must be a 10-digit number.');
+    }
+
     this.logger.log(`Firebase token verified for: ${phoneNumber}`);
 
     // Find existing user or create new one

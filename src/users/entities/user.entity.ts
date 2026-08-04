@@ -11,7 +11,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'mobile_no', unique: true })
+  @Column({ name: 'mobile_no', type: 'varchar', length: 10, unique: true })
   mobile_no: string;
 
   @Column({ default: '' })
