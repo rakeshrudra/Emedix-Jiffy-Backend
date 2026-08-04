@@ -12,7 +12,7 @@ import {
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { OrderDelivery } from '../../delivery/entities/order-delivery.entity';
-import { OrderUserAddress } from './order-user-address.entity';
+import { OrderDeliveryAddress } from './order-delivery-address.entity';
 import { User } from '../../users/entities/user.entity';
 import { Store } from '../../stores/entities/store.entity';
 
@@ -99,11 +99,19 @@ export class Order {
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
   total_amount: number;
 
-  @OneToOne(() => OrderUserAddress, (address) => address.order, {
+  @ApiProperty({ example: 'John Doe' })
+  @Column({ name: 'recipient_name' })
+  recipient_name: string;
+
+  @ApiProperty({ example: '9876543210' })
+  @Column({ name: 'recipient_mobile_number', type: 'varchar', length: 10 })
+  recipient_mobile_number: string;
+
+  @OneToOne(() => OrderDeliveryAddress, (address) => address.order, {
     cascade: true,
     eager: true,
   })
-  user_address: OrderUserAddress;
+  delivery_address: OrderDeliveryAddress | null;
 
   @Column({ name: 'prescription_urls', type: 'text', default: '' })
   prescription_urls: string;

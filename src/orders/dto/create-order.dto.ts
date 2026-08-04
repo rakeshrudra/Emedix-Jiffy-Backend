@@ -36,11 +36,30 @@ export class CreateOrderDto {
 
     @ApiProperty({
         example: '6f4db8bc-a6da-4fb9-bc2c-e3c49515b4be',
-        description: 'Saved address ID from the user\'s address book. Always required — tracked as the order\'s user_address regardless of fulfillment_type.',
+        description: 'Saved address ID from the user\'s address book. Required only when fulfillment_type is DELIVERY.',
+        required: false,
     })
+    @ValidateIf((o) => o.fulfillment_type === FulfillmentType.DELIVERY)
     @IsNotEmpty()
     @IsUUID()
-    user_address_id: string;
+    user_address_id?: string;
+
+    @ApiProperty({
+        example: 'John Doe',
+        description: 'Name of the person to hand the order to at pickup (or receiving it, for delivery).',
+    })
+    @IsNotEmpty()
+    @IsString()
+    recipient_name: string;
+
+    @ApiProperty({
+        example: '9876543210',
+        description: 'Contact number of the recipient.',
+    })
+    @IsNotEmpty()
+    @IsString()
+    @Matches(/^\d{10}$/, { message: 'recipient_mobile_number must be a 10-digit number' })
+    recipient_mobile_number: string;
 
     @ApiProperty({ example: ['https://storage.example.com/rx1.jpg'], required: false })
     @IsOptional()
