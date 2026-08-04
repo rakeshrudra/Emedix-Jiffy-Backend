@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Store } from '../../stores/entities/store.entity';
+import { AdminRole } from '../enums/admin-role.enum';
 
 @Entity('admins')
 export class Admin {
@@ -20,12 +21,15 @@ export class Admin {
   @Column({ name: 'password_hash' })
   password_hash: string;
 
-  @Column({ name: 'store_id' })
-  store_id: string;
+  @Column({ name: 'store_id', nullable: true })
+  store_id: string | null;
 
-  @ManyToOne(() => Store, { onDelete: 'RESTRICT' })
+  @Column({ type: 'enum', enum: AdminRole, default: AdminRole.ADMIN })
+  role: AdminRole;
+
+  @ManyToOne(() => Store, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'store_id', referencedColumnName: 'store_id' })
-  store: Store;
+  store: Store | null;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;

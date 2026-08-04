@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Store } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreAdminDto } from './dto/update-store-admin.dto';
 
 export interface StoreWithDistance extends ReturnType<StoresService['format']> {
   distance_km: number;
@@ -138,6 +139,77 @@ export class StoresService {
     };
   }
 
+  async findAllForSuperAdmin() {
+    const stores = await this.storeRepository.find({
+      order: { name: 'ASC' },
+    });
+
+    return {
+      success: true,
+      data: stores.map((store) => ({
+        ...this.format(store),
+        is_open: this.isStoreOpen(store),
+      })),
+    };
+  }
+
+  async findOneForSuperAdmin(store_id: string) {
+    const store = await this.storeRepository.findOne({
+      where: { store_id: store_id },
+    });
+    if (!store) throw new NotFoundException('Store not found');
+
+    return {
+      success: true,
+      data: {
+        ...this.format(store),
+        is_open: this.isStoreOpen(store),
+      },
+    };
+  }
+
+  async updateForSuperAdmin(store_id: string, dto: UpdateStoreAdminDto) {
+    this.assertCoordinatePair(dto);
+
+    const store = await this.storeRepository.findOne({
+      where: { store_id: store_id },
+    });
+    if (!store) throw new NotFoundException('Store not found');
+
+    const fields: Array<keyof UpdateStoreAdminDto> = [
+      'phone',
+      'opening_time',
+      'closing_time',
+      'delivery_radius_km',
+      'is_active',
+      'address_line_1',
+      'formatted_address',
+      'city',
+      'state',
+      'pincode',
+      'country',
+      'latitude',
+      'longitude',
+    ];
+
+    for (const field of fields) {
+      if (dto[field] !== undefined) {
+        (store as any)[field] = dto[field];
+      }
+    }
+
+    const saved = await this.storeRepository.save(store);
+
+    return {
+      success: true,
+      message: 'Store updated successfully',
+      data: {
+        ...this.format(saved),
+        is_open: this.isStoreOpen(saved),
+      },
+    };
+  }
+
   async findStoreForAdminByStoreId(store_id: string): Promise<Store> {
     const store = await this.storeRepository.findOne({
       where: { store_id: store_id },
@@ -217,6 +289,15 @@ export class StoresService {
   assertValidCoordinates(lat: number, lng: number): void {
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       throw new BadRequestException('Invalid coordinates');
+    }
+  }
+
+  private assertCoordinatePair(dto: UpdateStoreAdminDto): void {
+    const hasLat = dto.latitude !== undefined;
+    const hasLng = dto.longitude !== undefined;
+
+    if (hasLat !== hasLng) {
+      throw new BadRequestException('latitude and longitude must be updated together');
     }
   }
 
