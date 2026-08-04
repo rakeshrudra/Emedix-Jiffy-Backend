@@ -232,11 +232,18 @@ export class StoresService {
     const store = await this.storeRepository.findOne({ where: { store_id: store_id } });
 
     if (!store || !store.is_active) {
-      throw new BadRequestException('This store is currently unavailable. Please try again later.');
+      throw new BadRequestException({
+        message: 'This store is currently unavailable. Please try again later.',
+        error_code: 'STORE_UNAVAILABLE',
+      });
     }
 
     if (!this.isStoreOpen(store)) {
-      throw new BadRequestException(`Store is closed. It opens at ${store.opening_time}.`);
+      throw new BadRequestException({
+        message: `Store is closed. It opens at ${store.opening_time}.`,
+        error_code: 'STORE_CLOSED',
+        details: { opening_time: store.opening_time, closing_time: store.closing_time },
+      });
     }
 
     return store;
@@ -251,7 +258,10 @@ export class StoresService {
     const store = await this.storeRepository.findOne({ where: { store_id: store_id } });
 
     if (!store || !store.is_active) {
-      throw new BadRequestException('This store is currently unavailable. Please try again later.');
+      throw new BadRequestException({
+        message: 'This store is currently unavailable. Please try again later.',
+        error_code: 'STORE_UNAVAILABLE',
+      });
     }
 
     const scheduledAt = this.parseIstDateTime(scheduled_date, schedule_start);
@@ -262,21 +272,32 @@ export class StoresService {
     const endMinutes = this.timeToMinutes(schedule_end);
 
     if (scheduledAt.getTime() < minScheduledAt.getTime()) {
-      throw new BadRequestException('Scheduled order time must be at least 1 hour from now.');
+      throw new BadRequestException({
+        message: 'Scheduled order time must be at least 1 hour from now.',
+        error_code: 'SCHEDULE_TOO_SOON',
+      });
     }
 
     if (scheduledAt.getTime() > maxScheduledAt.getTime()) {
-      throw new BadRequestException('Scheduled order time cannot be more than 4 days from now.');
+      throw new BadRequestException({
+        message: 'Scheduled order time cannot be more than 4 days from now.',
+        error_code: 'SCHEDULE_TOO_FAR',
+      });
     }
 
     if (endMinutes <= startMinutes) {
-      throw new BadRequestException('schedule_end must be after schedule_start.');
+      throw new BadRequestException({
+        message: 'schedule_end must be after schedule_start.',
+        error_code: 'SCHEDULE_INVALID_RANGE',
+      });
     }
 
     if (!this.isSlotWithinStoreHours(schedule_start, schedule_end, store.opening_time, store.closing_time)) {
-      throw new BadRequestException(
-        `Selected slot must be between ${store.opening_time} and ${store.closing_time}.`,
-      );
+      throw new BadRequestException({
+        message: `Selected slot must be between ${store.opening_time} and ${store.closing_time}.`,
+        error_code: 'SCHEDULE_OUTSIDE_STORE_HOURS',
+        details: { opening_time: store.opening_time, closing_time: store.closing_time },
+      });
     }
 
     return store;
