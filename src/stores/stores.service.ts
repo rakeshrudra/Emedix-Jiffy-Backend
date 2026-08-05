@@ -148,7 +148,7 @@ export class StoresService {
       success: true,
       data: stores.map((store) => ({
         ...this.format(store),
-        is_open: this.isStoreOpen(store),
+        is_open: this.isStoreAvailableNow(store),
       })),
     };
   }
@@ -163,7 +163,7 @@ export class StoresService {
       success: true,
       data: {
         ...this.format(store),
-        is_open: this.isStoreOpen(store),
+        is_open: this.isStoreAvailableNow(store),
       },
     };
   }
@@ -205,7 +205,7 @@ export class StoresService {
       message: 'Store updated successfully',
       data: {
         ...this.format(saved),
-        is_open: this.isStoreOpen(saved),
+        is_open: this.isStoreAvailableNow(saved),
       },
     };
   }
@@ -305,6 +305,10 @@ export class StoresService {
 
   isStoreOpen(store: Store): boolean {
     return this.isStoreOpenAt(store.opening_time, store.closing_time);
+  }
+
+  private isStoreAvailableNow(store: Store): boolean {
+    return store.is_active && this.isStoreOpen(store);
   }
 
   assertValidCoordinates(lat: number, lng: number): void {
