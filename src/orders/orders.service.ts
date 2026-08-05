@@ -59,6 +59,7 @@ export interface OrderPickupAddress {
   country: string;
   latitude: string;
   longitude: string;
+  phone: string | null;
 }
 
 export interface OrderListItem {
@@ -415,6 +416,7 @@ export class OrdersService {
         country: true,
         latitude: true,
         longitude: true,
+        phone: true,
       },
     });
 
@@ -850,6 +852,7 @@ export class OrdersService {
       country: store.country,
       latitude: String(store.latitude),
       longitude: String(store.longitude),
+      phone: store.phone ?? null,
     };
   }
 
