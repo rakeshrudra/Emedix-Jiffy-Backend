@@ -7,10 +7,19 @@ import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
 import { ProductDto } from './dto/product.dto';
 import { ProductStockDto } from './dto/product-stock.dto';
+import { AdminProductInventoryDto } from './dto/admin-product-inventory.dto';
+import { AdminProductInventoryQueryDto } from './dto/admin-product-inventory-query.dto';
 import { parseInventoryFile } from './utils/inventory-upload.util';
 
 export interface ProductListResult {
     data: Product[];
+    total: number;
+    page: number;
+    limit: number;
+}
+
+export interface AdminInventoryListResult {
+    data: AdminProductInventoryDto[];
     total: number;
     page: number;
     limit: number;
@@ -99,6 +108,57 @@ export class ProductsService {
         return this.productRepository.findOne({
             where: { product_code: product_code, store_id: store_id },
         });
+    }
+
+    async listAdminInventory(
+        store_id: string,
+        dto: AdminProductInventoryQueryDto,
+    ): Promise<AdminInventoryListResult> {
+        const page = dto.page ?? 1;
+        const limit = dto.limit ?? 50;
+        const skip = (page - 1) * limit;
+
+        const qb = this.productRepository
+            .createQueryBuilder('p')
+            .select([
+                'p.product_code',
+                'p.product_name',
+                'p.product_company',
+                'p.prescription_required',
+                'p.product_price',
+                'p.product_discount_price',
+                'p.product_stock',
+            ])
+            .where('p.store_id = :store_id', { store_id: store_id })
+            .orderBy('p.product_name', 'ASC')
+            .skip(skip)
+            .take(limit);
+
+        if (dto.q?.trim()) {
+            qb.andWhere(
+                `(
+                    LOWER(p.product_name) LIKE :q OR
+                    LOWER(p.product_code) LIKE :q OR
+                    LOWER(p.product_company) LIKE :q OR
+                    LOWER(p.product_composition) LIKE :q
+                )`,
+                { q: `%${dto.q.trim().toLowerCase()}%` },
+            );
+        }
+
+        const [products, total] = await qb.getManyAndCount();
+
+        const data: AdminProductInventoryDto[] = products.map((product) => ({
+            product_code: product.product_code,
+            product_name: product.product_name,
+            product_company: product.product_company,
+            prescription_required: product.prescription_required ? 'Yes' : 'No',
+            product_price: Number(product.product_price),
+            product_discount_price: Number(product.product_discount_price),
+            product_stock: Number(product.product_stock),
+        }));
+
+        return { data, total, page, limit };
     }
 
     parseStock(product: Product): number {
