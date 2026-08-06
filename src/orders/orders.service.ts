@@ -459,6 +459,40 @@ export class OrdersService {
     };
   }
 
+  async getSuperAdminOrders(
+    store_id?: string,
+    status?: OrderStatus,
+    page = 1,
+    limit = 30,
+  ) {
+    const where: Partial<Order> = {};
+    if (store_id) where.store_id = store_id;
+    if (status) where.status = status;
+
+    const [orders, total] = await this.orderRepository.findAndCount({
+      where,
+      order: { created_at: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const formattedOrders = await Promise.all(
+      orders.map(async (order) => {
+        const user = await this.usersService.findById(order.user_id);
+        return this.buildAdminOrderSummary(order, user);
+      }),
+    );
+
+    return {
+      count: formattedOrders.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      orders: formattedOrders,
+    };
+  }
+
   async getAdminOrderItems(order_id: number, store_id: string) {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, store_id: store_id },
