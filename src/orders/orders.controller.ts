@@ -24,6 +24,9 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { AdminRole } from '../admin/enums/admin-role.enum';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AdminOrdersQueryDto } from './dto/admin-orders-query.dto';
@@ -342,5 +345,49 @@ export class AdminOrdersController {
       message: 'Order cancelled successfully',
       data: order,
     };
+  }
+}
+
+@ApiTags('Super Admin Orders')
+@ApiBearerAuth()
+@UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
+@Roles(AdminRole.SUPER_ADMIN)
+@Controller('api/admin/super/orders')
+export class SuperAdminAllOrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  /**
+   * GET /api/admin/super/orders
+   * Returns paginated orders across all stores, optionally filtered by store
+   * and status for the Super Admin dashboard.
+   */
+  @Get()
+  @ApiOperation({
+    summary: 'Get paginated orders across stores as Super Admin',
+    description:
+      'Returns paginated orders across all stores. Use optional store_id and status queries to filter the dashboard.',
+  })
+  @ApiQuery({ name: 'store_id', required: false, description: 'Optional ERP store ID', example: '001' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: OrderStatus,
+    description: 'Optional status filter. Leave blank to return all statuses.',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 30 })
+  @ApiResponse({ status: 200, description: 'Super Admin order list returned' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Super Admin access required' })
+  async getOrders(@Query() query: AdminOrdersQueryDto) {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 30));
+
+    return this.ordersService.getSuperAdminOrders(
+      query.store_id,
+      query.status,
+      page,
+      limit,
+    );
   }
 }
