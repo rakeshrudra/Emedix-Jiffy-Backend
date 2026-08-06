@@ -1,9 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { OrderStatus } from '../entities/order.entity';
 
 export class AdminOrdersQueryDto {
+  @ApiPropertyOptional({
+    example: '001',
+    description: 'Optional ERP store ID filter for Super Admin order views.',
+  })
+  @IsOptional()
+  @IsString()
+  store_id?: string;
+
   @ApiPropertyOptional({
     enum: OrderStatus,
     description:
