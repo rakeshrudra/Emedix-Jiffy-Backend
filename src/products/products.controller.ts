@@ -26,6 +26,8 @@ import {
 import { ProductsService } from './products.service';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
+import { AdminProductInventoryDto } from './dto/admin-product-inventory.dto';
+import { AdminProductInventoryQueryDto } from './dto/admin-product-inventory-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 
@@ -123,6 +125,44 @@ export class ProductsController {
 @Controller('api/admin')
 export class AdminProductsController {
   constructor(private readonly productsService: ProductsService) {}
+
+  /**
+   * GET /api/admin/products?page=1&limit=50&q=paracetamol
+   * Lists every product for the logged-in admin's store, including zero stock.
+   * Optional `q` searches by product name, code, company, or composition.
+   */
+  @Get('products')
+  @ApiOperation({ summary: "List the logged-in admin store's full product inventory" })
+  @ApiQuery({ name: 'q', required: false, description: 'Search by product name, code, company, or composition' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page, max 100', example: 50 })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated store inventory returned',
+    type: AdminProductInventoryDto,
+    isArray: true,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async listAdminProducts(
+    @Request() req: any,
+    @Query() query: AdminProductInventoryQueryDto,
+  ) {
+    const result = await this.productsService.listAdminInventory(
+      req.user.store_id,
+      query,
+    );
+
+    return {
+      success: true,
+      data: result.data,
+      meta: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        pages: Math.ceil(result.total / result.limit),
+      },
+    };
+  }
 
   /**
    * POST /api/admin/upload-inventory
