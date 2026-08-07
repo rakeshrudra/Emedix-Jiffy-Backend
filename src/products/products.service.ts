@@ -146,6 +146,10 @@ export class ProductsService {
             );
         }
 
+        if (dto.maxStock !== undefined) {
+            qb.andWhere('p.product_stock <= :maxStock', { maxStock: dto.maxStock });
+        }
+
         const [products, total] = await qb.getManyAndCount();
 
         const data: AdminProductInventoryDto[] = products.map((product) => ({
