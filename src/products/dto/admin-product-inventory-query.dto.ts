@@ -22,4 +22,11 @@ export class AdminProductInventoryQueryDto {
     @Min(1)
     @Max(100)
     limit?: number = 50;
+
+    @ApiPropertyOptional({ example: 5, description: 'Show products with stock less than or equal to this value' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(0)
+    maxStock?: number;
 }
