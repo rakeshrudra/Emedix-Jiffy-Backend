@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Store } from './entities/store.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreAdminDto } from './dto/update-store-admin.dto';
@@ -171,42 +171,16 @@ export class StoresService {
   async updateForSuperAdmin(store_id: string, dto: UpdateStoreAdminDto) {
     this.assertCoordinatePair(dto);
 
-    const store = await this.storeRepository.findOne({
-      where: { store_id: store_id },
-    });
+    const store = await this.storeRepository.findOne({ where: { store_id } });
     if (!store) throw new NotFoundException('Store not found');
 
-    const fields: Array<keyof UpdateStoreAdminDto> = [
-      'phone',
-      'opening_time',
-      'closing_time',
-      'delivery_radius_km',
-      'is_active',
-      'address_line_1',
-      'formatted_address',
-      'city',
-      'state',
-      'pincode',
-      'country',
-      'latitude',
-      'longitude',
-    ];
-
-    for (const field of fields) {
-      if (dto[field] !== undefined) {
-        (store as any)[field] = dto[field];
-      }
-    }
-
+    Object.assign(store, dto);
     const saved = await this.storeRepository.save(store);
 
     return {
       success: true,
       message: 'Store updated successfully',
-      data: {
-        ...this.format(saved),
-        is_open: this.isStoreAvailableNow(saved),
-      },
+      data: { ...this.format(saved), is_open: this.isStoreAvailableNow(saved) },
     };
   }
 
@@ -222,12 +196,34 @@ export class StoresService {
     return store;
   }
 
-  /**
-   * Looks up a store by its ERP store_id and asserts it can currently accept
-   * orders (exists, active, within opening hours). Throws BadRequestException
-   * with a user-facing message otherwise. Single source of truth for this
-   * check — callers (e.g. OrdersService) should not re-derive it themselves.
-   */
+  async findManyByStoreIds(store_ids: string[]): Promise<Store[]> {
+    if (!store_ids.length) return [];
+
+    return this.storeRepository.find({
+      where: { store_id: In(store_ids) },
+      select: { store_id: true, emedix_name: true, name: true, city: true, state: true },
+    });
+  }
+
+  async findPickupAddressFields(store_id: string): Promise<Store | null> {
+    return this.storeRepository.findOne({
+      where: { store_id: store_id },
+      select: {
+        name: true,
+        emedix_name: true,
+        address_line_1: true,
+        formatted_address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+        phone: true,
+      },
+    });
+  }
+
   async assertOrderable(store_id: string): Promise<Store> {
     const store = await this.storeRepository.findOne({ where: { store_id: store_id } });
 

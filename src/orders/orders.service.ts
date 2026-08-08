@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { FulfillmentType, Order, OrderActor, OrderStatus } from './entities/order.entity';
@@ -44,6 +44,9 @@ export interface AdminOrderSummary {
   scheduled_date: string | null;
   scheduled_start_time: string | null;
   scheduled_end_time: string | null;
+  cancelled_at: Date | null;
+  cancellation_reason: string;
+  cancelled_by: 'USER' | 'STORE' | null;
   created_at: Date;
   status: OrderStatus;
 }
@@ -73,6 +76,8 @@ export interface OrderListItem {
   recipient_mobile_number: string;
   pickup_address: { emedix_name: string; name: string; city: string; state: string } | null;
 }
+
+type OrderWithItemCount = Order & { item_count: number };
 
 // Swil ERP: invoice hit → PENDING → CONFIRMED
 const VALID_ERP_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -112,8 +117,6 @@ export class OrdersService {
     private readonly orderItemRepository: Repository<OrderItem>,
     @InjectRepository(OrderDeliveryAddress)
     private readonly orderDeliveryAddressRepository: Repository<OrderDeliveryAddress>,
-    @InjectRepository(Store)
-    private readonly storeRepository: Repository<Store>,
     private readonly invoicesService: InvoicesService,
     private readonly productsService: ProductsService,
     private readonly storesService: StoresService,
@@ -353,22 +356,17 @@ export class OrdersService {
     page: number;
     pages: number;
   }> {
-    const [orders, total] = await this.orderRepository
+    const [orders, total] = (await this.orderRepository
       .createQueryBuilder('order')
       .loadRelationCountAndMap('order.item_count', 'order.items')
       .where('order.user_id = :user_id', { user_id })
       .orderBy('order.created_at', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
-      .getManyAndCount();
+      .getManyAndCount()) as [OrderWithItemCount[], number];
 
     const storeIds = [...new Set(orders.map((order) => order.store_id))];
-    const stores = storeIds.length
-      ? await this.storeRepository.find({
-        where: { store_id: In(storeIds) },
-        select: { store_id: true, emedix_name: true, name: true, city: true, state: true },
-      })
-      : [];
+    const stores = await this.storesService.findManyByStoreIds(storeIds);
     const storesById = new Map(stores.map((store) => [store.store_id, store]));
 
     const data: OrderListItem[] = orders.map((order) => {
@@ -377,9 +375,9 @@ export class OrdersService {
         id: order.id,
         order_number: order.order_number,
         status: order.status,
-        total_amount: order.total_amount as unknown as string,
+        total_amount: String(order.total_amount),
         created_at: order.created_at,
-        item_count: (order as unknown as { item_count: number }).item_count,
+        item_count: order.item_count,
         recipient_name: order.recipient_name,
         recipient_mobile_number: order.recipient_mobile_number,
         pickup_address: store
@@ -403,22 +401,7 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    const store = await this.storeRepository.findOne({
-      where: { store_id: order.store_id },
-      select: {
-        name: true,
-        emedix_name: true,
-        address_line_1: true,
-        formatted_address: true,
-        city: true,
-        state: true,
-        pincode: true,
-        country: true,
-        latitude: true,
-        longitude: true,
-        phone: true,
-      },
-    });
+    const store = await this.storesService.findPickupAddressFields(order.store_id);
 
     return {
       ...order,
@@ -574,25 +557,13 @@ export class OrdersService {
 
       for (const item of order.items) {
         const submitted = submittedById.get(item.id);
-        const orderedQuantity = Number(item.qty);
 
-        if (submitted.confirmed_quantity > orderedQuantity) {
-          throw new BadRequestException(
-            `confirmed_quantity cannot exceed ordered quantity for order item ${item.id}.`,
-          );
-        }
-
-        if (!submitted.is_available && submitted.confirmed_quantity !== 0) {
-          throw new BadRequestException(
-            `confirmed_quantity must be 0 when order item ${item.id} is unavailable.`,
-          );
-        }
-
-        if (submitted.is_available && submitted.confirmed_quantity < 1) {
-          throw new BadRequestException(
-            `confirmed_quantity must be at least 1 when order item ${item.id} is available.`,
-          );
-        }
+        this.assertValidItemChecklistEntry({
+          id: item.id,
+          is_available: submitted.is_available,
+          confirmed_quantity: submitted.confirmed_quantity,
+          ordered_quantity: Number(item.qty),
+        });
 
         item.is_available = submitted.is_available;
         item.confirmed_quantity = submitted.confirmed_quantity;
@@ -730,6 +701,21 @@ export class OrdersService {
       OrderStatus.CANCELLED,
       savedOrder.order_number,
     );
+
+    this.usersService
+      .findById(savedOrder.user_id)
+      .then((user) => {
+        this.ordersGateway.emitOrderUpdated(
+          savedOrder.store_id,
+          this.buildAdminOrderSummary(savedOrder, user),
+        );
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to emit order:updated for ${savedOrder.order_number}: ${message}`,
+        );
+      });
 
     return savedOrder;
   }
@@ -912,9 +898,42 @@ export class OrdersService {
       scheduled_date: order.scheduled_date,
       scheduled_start_time: order.scheduled_start_time,
       scheduled_end_time: order.scheduled_end_time,
+      cancelled_at: order.cancelled_at,
+      cancellation_reason: order.cancellation_reason,
+      cancelled_by: order.cancelled_by,
       created_at: order.created_at,
       status: order.status,
     };
+  }
+
+  /**
+   * The single source of truth for "is this item's availability/quantity combination valid".
+   */
+  private assertValidItemChecklistEntry(entry: {
+    id: number;
+    is_available: boolean;
+    confirmed_quantity: number;
+    ordered_quantity: number;
+  }): void {
+    const { id, is_available, confirmed_quantity, ordered_quantity } = entry;
+
+    if (confirmed_quantity < 0 || confirmed_quantity > ordered_quantity) {
+      throw new BadRequestException(
+        `Invalid confirmed quantity for order item ${id}.`,
+      );
+    }
+
+    if (is_available && confirmed_quantity < 1) {
+      throw new BadRequestException(
+        `Available order item ${id} must have a confirmed quantity.`,
+      );
+    }
+
+    if (!is_available && confirmed_quantity !== 0) {
+      throw new BadRequestException(
+        `Unavailable order item ${id} must have confirmed quantity 0.`,
+      );
+    }
   }
 
   private assertAdminChecklistCanConfirm(items: OrderItem[]): void {
@@ -925,27 +944,14 @@ export class OrdersService {
     let availableItemCount = 0;
 
     for (const item of items) {
-      const orderedQuantity = Number(item.qty);
-      const confirmedQuantity = Number(item.confirmed_quantity);
+      this.assertValidItemChecklistEntry({
+        id: item.id,
+        is_available: item.is_available,
+        confirmed_quantity: Number(item.confirmed_quantity),
+        ordered_quantity: Number(item.qty),
+      });
 
-      if (confirmedQuantity < 0 || confirmedQuantity > orderedQuantity) {
-        throw new BadRequestException(
-          `Invalid confirmed quantity for order item ${item.id}.`,
-        );
-      }
-
-      if (item.is_available) {
-        if (confirmedQuantity < 1) {
-          throw new BadRequestException(
-            `Available order item ${item.id} must have a confirmed quantity.`,
-          );
-        }
-        availableItemCount += 1;
-      } else if (confirmedQuantity !== 0) {
-        throw new BadRequestException(
-          `Unavailable order item ${item.id} must have confirmed quantity 0.`,
-        );
-      }
+      if (item.is_available) availableItemCount += 1;
     }
 
     if (availableItemCount === 0) {
