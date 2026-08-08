@@ -44,6 +44,9 @@ export interface AdminOrderSummary {
   scheduled_date: string | null;
   scheduled_start_time: string | null;
   scheduled_end_time: string | null;
+  cancelled_at: Date | null;
+  cancellation_reason: string;
+  cancelled_by: 'USER' | 'STORE' | null;
   created_at: Date;
   status: OrderStatus;
 }
@@ -927,6 +930,9 @@ export class OrdersService {
       scheduled_date: order.scheduled_date,
       scheduled_start_time: order.scheduled_start_time,
       scheduled_end_time: order.scheduled_end_time,
+      cancelled_at: order.cancelled_at,
+      cancellation_reason: order.cancellation_reason,
+      cancelled_by: order.cancelled_by,
       created_at: order.created_at,
       status: order.status,
     };
