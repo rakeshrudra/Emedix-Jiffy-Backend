@@ -731,6 +731,21 @@ export class OrdersService {
       savedOrder.order_number,
     );
 
+    this.usersService
+      .findById(savedOrder.user_id)
+      .then((user) => {
+        this.ordersGateway.emitOrderUpdated(
+          savedOrder.store_id,
+          this.buildAdminOrderSummary(savedOrder, user),
+        );
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to emit order:updated for ${savedOrder.order_number}: ${message}`,
+        );
+      });
+
     return savedOrder;
   }
 
