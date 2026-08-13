@@ -12,6 +12,7 @@ import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { ProductsModule } from '../products/products.module';
 import { StoresModule } from '../stores/stores.module';
@@ -39,7 +40,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
         AdminOrdersController,
         SuperAdminAllOrdersController,
     ],
-    providers: [OrdersService, OrdersGateway, JwtAuthGuard],
+    providers: [OrdersService, OrdersGateway, JwtAuthGuard, AdminJwtAuthGuard],
     exports: [OrdersService],
 })
 export class OrdersModule { }

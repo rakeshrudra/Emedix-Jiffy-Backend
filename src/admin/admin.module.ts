@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,6 +9,7 @@ import { Admin } from './entities/admin.entity';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
 
+@Global()
 @Module({
   imports: [
     ConfigModule,
