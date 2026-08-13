@@ -15,11 +15,14 @@ export class Admin {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
-  username: string;
+  @Column({ name: 'identity_id', type: 'uuid', unique: true })
+  identity_id: string;
 
-  @Column({ name: 'password_hash' })
-  password_hash: string;
+  @Column({ name: 'mobile_no', type: 'varchar', length: 10, unique: true })
+  mobile_no: string;
+
+  @Column()
+  username: string;
 
   @Column({ name: 'store_id', nullable: true })
   store_id: string | null;
