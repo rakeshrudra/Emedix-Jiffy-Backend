@@ -26,7 +26,7 @@ function parseCookie(cookieHeader: string | undefined, name: string): string | u
 @WebSocketGateway({
   namespace: '/admin',
   cors: {
-    origin: [process.env.ADMIN_DASHBOARD_URL, 'http://localhost:5173'].filter(
+    origin: [process.env.ADMIN_DASHBOARD_URL, 'http://localhost:5174'].filter(
       Boolean,
     ),
     credentials: true,
