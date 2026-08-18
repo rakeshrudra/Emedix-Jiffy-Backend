@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -14,11 +15,14 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
+import { AdminProvisionDto } from './dto/admin-provision.dto';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { AuthServiceApiKeyGuard } from '../common/guards/auth-service-api-key.guard';
 
 @ApiTags('Admin Auth')
 @Controller('api/admin/auth')
@@ -28,14 +32,22 @@ export class AdminController {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * POST /api/admin/auth/signup
+   * Internal provisioning endpoint called by Emedix Auth Service to create
+   * an admin profile row after it creates the identity. Not user-facing.
+   */
   @Post('signup')
-  @HttpCode(HttpStatus.NOT_IMPLEMENTED)
-  @ApiOperation({ summary: '[Deprecated] Use Emedix Auth Service signup instead' })
-  @ApiResponse({ status: 501, description: 'Moved to Emedix Auth Service' })
-  signup() {
-    throw new NotImplementedException(
-      'Admin signup has moved to Emedix Auth Service',
-    );
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(AuthServiceApiKeyGuard)
+  @ApiSecurity('x-api-key')
+  @ApiOperation({ summary: '[Internal] Provision an admin profile for an Emedix Auth Service identity' })
+  @ApiResponse({ status: 201, description: 'Admin profile provisioned' })
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
+  @ApiResponse({ status: 409, description: 'Admin already exists for this identity, mobile number, or username' })
+  signup(@Body() dto: AdminProvisionDto) {
+    return this.adminService.provision(dto);
   }
 
   @Post('login')
