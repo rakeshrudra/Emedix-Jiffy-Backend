@@ -8,6 +8,7 @@ import { AdminService } from './admin.service';
 import { Admin } from './entities/admin.entity';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
+import { AuthServiceApiKeyGuard } from '../common/guards/auth-service-api-key.guard';
 
 @Global()
 @Module({
@@ -18,7 +19,7 @@ import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
     StoresModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService, AdminJwtAuthGuard, AdminRolesGuard],
+  providers: [AdminService, AdminJwtAuthGuard, AdminRolesGuard, AuthServiceApiKeyGuard],
   exports: [AdminService, AdminJwtAuthGuard, AdminRolesGuard],
 })
 export class AdminModule {}

@@ -1,8 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
 import { Store } from '../stores/entities/store.entity';
+import { AdminProvisionDto } from './dto/admin-provision.dto';
 import { Admin } from './entities/admin.entity';
 import { AdminRole } from './enums/admin-role.enum';
 
@@ -13,6 +14,48 @@ export class AdminService {
     private readonly adminRepository: Repository<Admin>,
     private readonly storesService: StoresService,
   ) {}
+
+  async provision(dto: AdminProvisionDto) {
+    const username = dto.username.trim().toLowerCase();
+    const role = dto.role ?? AdminRole.ADMIN;
+
+    const existing = await this.adminRepository.findOne({
+      where: [
+        { identity_id: dto.identity_id },
+        { mobile_no: dto.mobile_no },
+        { username },
+      ],
+    });
+    if (existing) {
+      throw new ConflictException('Admin with this identity, mobile number, or username already exists');
+    }
+
+    const store = await this.storesService.findStoreForAdminByStoreId(dto.store_id);
+
+    const admin = await this.adminRepository.save(
+      this.adminRepository.create({
+        identity_id: dto.identity_id,
+        mobile_no: dto.mobile_no,
+        username,
+        store_id: dto.store_id,
+        role,
+      }),
+    );
+
+    return {
+      success: true,
+      message: 'Admin provisioned successfully',
+      data: {
+        id: admin.id,
+        identity_id: admin.identity_id,
+        username: admin.username,
+        role: admin.role,
+        store_id: admin.store_id,
+        store_name: store?.name ?? null,
+        created_at: admin.created_at,
+      },
+    };
+  }
 
   async getCurrentAdmin(admin_id: string) {
     const admin = await this.findExistingAdmin(admin_id);
