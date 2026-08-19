@@ -1,10 +1,12 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
 import { Store } from '../stores/entities/store.entity';
+import { AdminSignupDto } from './dto/admin-signup.dto';
 import { Admin } from './entities/admin.entity';
 import { AdminRole } from './enums/admin-role.enum';
+import { SsoTokenPayload } from '../common/guards/sso-auth.guard';
 
 @Injectable()
 export class AdminService {
@@ -13,6 +15,41 @@ export class AdminService {
     private readonly adminRepository: Repository<Admin>,
     private readonly storesService: StoresService,
   ) {}
+
+  async signup(sso: SsoTokenPayload, dto: AdminSignupDto) {
+    const existing = await this.adminRepository.findOne({
+      where: [{ identity_id: sso.sub }, { mobile_no: sso.mobile_no }],
+    });
+    if (existing) {
+      throw new ConflictException('Admin is already signed up');
+    }
+
+    const store = await this.storesService.findStoreForAdminByStoreId(dto.store_id);
+
+    const admin = await this.adminRepository.save(
+      this.adminRepository.create({
+        identity_id: sso.sub,
+        mobile_no: sso.mobile_no,
+        username: sso.username,
+        store_id: dto.store_id,
+        role: sso.role as AdminRole,
+      }),
+    );
+
+    return {
+      success: true,
+      message: 'Admin signed up successfully',
+      data: {
+        id: admin.id,
+        identity_id: admin.identity_id,
+        username: admin.username,
+        role: admin.role,
+        store_id: admin.store_id,
+        store_name: store?.name ?? null,
+        created_at: admin.created_at,
+      },
+    };
+  }
 
   async getCurrentAdmin(admin_id: string) {
     const admin = await this.findExistingAdmin(admin_id);
@@ -38,7 +75,7 @@ export class AdminService {
   }
 
   private async findAdminStoreForProfile(admin: Admin): Promise<Store | null> {
-    if (admin.role === AdminRole.SUPER_ADMIN && !admin.store_id) {
+    if (admin.role === AdminRole.EMEDIX_SUPERADMIN && !admin.store_id) {
       return null;
     }
 

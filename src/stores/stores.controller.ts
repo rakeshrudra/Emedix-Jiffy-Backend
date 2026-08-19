@@ -113,7 +113,7 @@ export class StoresController {
 @ApiTags('Super Admin Stores')
 @ApiBearerAuth()
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
-@Roles(AdminRole.SUPER_ADMIN)
+@Roles(AdminRole.EMEDIX_SUPERADMIN)
 @Controller('api/admin/super/stores')
 export class SuperAdminStoresController {
   constructor(private readonly storesService: StoresService) {}

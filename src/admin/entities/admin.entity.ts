@@ -5,7 +5,6 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { Store } from '../../stores/entities/store.entity';
 import { AdminRole } from '../enums/admin-role.enum';
@@ -27,7 +26,7 @@ export class Admin {
   @Column({ name: 'store_id', nullable: true })
   store_id: string | null;
 
-  @Column({ type: 'enum', enum: AdminRole, default: AdminRole.ADMIN })
+  @Column({ type: 'enum', enum: AdminRole })
   role: AdminRole;
 
   @ManyToOne(() => Store, { onDelete: 'RESTRICT', nullable: true })
@@ -36,7 +35,4 @@ export class Admin {
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
 }

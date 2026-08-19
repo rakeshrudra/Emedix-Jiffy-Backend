@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -18,7 +19,9 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
+import { AdminSignupDto } from './dto/admin-signup.dto';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { SsoAuthGuard } from '../common/guards/sso-auth.guard';
 
 @ApiTags('Admin Auth')
 @Controller('api/admin/auth')
@@ -29,13 +32,15 @@ export class AdminController {
   ) {}
 
   @Post('signup')
-  @HttpCode(HttpStatus.NOT_IMPLEMENTED)
-  @ApiOperation({ summary: '[Deprecated] Use Emedix Auth Service signup instead' })
-  @ApiResponse({ status: 501, description: 'Moved to Emedix Auth Service' })
-  signup() {
-    throw new NotImplementedException(
-      'Admin signup has moved to Emedix Auth Service',
-    );
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(SsoAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Self-signup as a Jiffy admin using the current SSO session' })
+  @ApiResponse({ status: 201, description: 'Admin signed up' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 409, description: 'Admin is already signed up' })
+  signup(@Request() req: any, @Body() dto: AdminSignupDto) {
+    return this.adminService.signup(req.sso, dto);
   }
 
   @Post('login')
@@ -45,16 +50,6 @@ export class AdminController {
   login() {
     throw new NotImplementedException(
       'Admin login has moved to Emedix Auth Service',
-    );
-  }
-
-  @Post('refresh')
-  @HttpCode(HttpStatus.NOT_IMPLEMENTED)
-  @ApiOperation({ summary: '[Deprecated] Use Emedix Auth Service refresh instead' })
-  @ApiResponse({ status: 501, description: 'Moved to Emedix Auth Service' })
-  refresh() {
-    throw new NotImplementedException(
-      'Admin token refresh has moved to Emedix Auth Service',
     );
   }
 
