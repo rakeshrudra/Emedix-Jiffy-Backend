@@ -3,9 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
 import { Store } from '../stores/entities/store.entity';
-import { AdminProvisionDto } from './dto/admin-provision.dto';
+import { AdminSignupDto } from './dto/admin-signup.dto';
 import { Admin } from './entities/admin.entity';
 import { AdminRole } from './enums/admin-role.enum';
+import { SsoTokenPayload } from '../common/guards/sso-auth.guard';
 
 @Injectable()
 export class AdminService {
@@ -15,36 +16,29 @@ export class AdminService {
     private readonly storesService: StoresService,
   ) {}
 
-  async provision(dto: AdminProvisionDto) {
-    const username = dto.username.trim().toLowerCase();
-    const role = dto.role ?? AdminRole.ADMIN;
-
+  async signup(sso: SsoTokenPayload, dto: AdminSignupDto) {
     const existing = await this.adminRepository.findOne({
-      where: [
-        { identity_id: dto.identity_id },
-        { mobile_no: dto.mobile_no },
-        { username },
-      ],
+      where: [{ identity_id: sso.sub }, { mobile_no: sso.mobile_no }],
     });
     if (existing) {
-      throw new ConflictException('Admin with this identity, mobile number, or username already exists');
+      throw new ConflictException('Admin is already signed up');
     }
 
     const store = await this.storesService.findStoreForAdminByStoreId(dto.store_id);
 
     const admin = await this.adminRepository.save(
       this.adminRepository.create({
-        identity_id: dto.identity_id,
-        mobile_no: dto.mobile_no,
-        username,
+        identity_id: sso.sub,
+        mobile_no: sso.mobile_no,
+        username: sso.username,
         store_id: dto.store_id,
-        role,
+        role: sso.role as AdminRole,
       }),
     );
 
     return {
       success: true,
-      message: 'Admin provisioned successfully',
+      message: 'Admin signed up successfully',
       data: {
         id: admin.id,
         identity_id: admin.identity_id,
@@ -81,7 +75,7 @@ export class AdminService {
   }
 
   private async findAdminStoreForProfile(admin: Admin): Promise<Store | null> {
-    if (admin.role === AdminRole.SUPER_ADMIN && !admin.store_id) {
+    if (admin.role === AdminRole.EMEDIX_SUPERADMIN && !admin.store_id) {
       return null;
     }
 
