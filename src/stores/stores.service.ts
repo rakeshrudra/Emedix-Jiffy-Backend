@@ -139,6 +139,19 @@ export class StoresService {
     };
   }
 
+  async findAllEmedixNamesForAdmin() {
+    const stores = await this.storeRepository.find({
+      where: { is_active: true },
+      order: { emedix_name: 'ASC' },
+      select: { store_id: true, emedix_name: true, name: true },
+    });
+
+    return {
+      success: true,
+      data: stores,
+    };
+  }
+
   async findAllForSuperAdmin() {
     const stores = await this.storeRepository.find({
       order: { name: 'ASC' },

@@ -110,6 +110,28 @@ export class StoresController {
   }
 }
 
+
+@ApiTags('Admin Stores')
+@ApiBearerAuth()
+@UseGuards(AdminJwtAuthGuard)
+@Roles(AdminRole.EMEDIX_ADMIN)
+@Controller('api/admin/stores')
+export class AdminStoresController {
+  constructor(private readonly storesService: StoresService) {}
+
+  /**
+   * GET /api/admin/stores/names
+   * Returns store_id + emedix_name for all active stores, for admins.
+   */
+  @Get('')
+  @ApiOperation({ summary: 'Get all active store emedix names for admins' })
+  @ApiResponse({ status: 200, description: 'Store names returned' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async findAllNames() {
+    return this.storesService.findAllEmedixNamesForAdmin();
+  }
+}
+
 @ApiTags('Super Admin Stores')
 @ApiBearerAuth()
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
