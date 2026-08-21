@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { SsoAuthGuard } from '../common/guards/sso-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
 import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -107,6 +108,28 @@ export class StoresController {
   @ApiResponse({ status: 404, description: 'Store not found' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.storesService.findOne(id);
+  }
+}
+
+
+@ApiTags('Admin Stores')
+@ApiBearerAuth()
+@UseGuards(SsoAuthGuard)
+@Controller('api/admin/stores')
+export class AdminStoresController {
+  constructor(private readonly storesService: StoresService) {}
+
+  /**
+   * GET /api/admin/stores
+   * Returns store_id + emedix_name for all active stores.
+   * Used by the Vitality signup flow to let a user pick their store.
+   */
+  @Get('')
+  @ApiOperation({ summary: 'Get all active store emedix names' })
+  @ApiResponse({ status: 200, description: 'Store names returned' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async findAllNames() {
+    return this.storesService.findAllEmedixNamesForAdmin();
   }
 }
 
