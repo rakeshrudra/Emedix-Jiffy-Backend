@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StoresService } from '../stores/stores.service';
@@ -24,14 +29,22 @@ export class AdminService {
       throw new ConflictException('Admin is already signed up');
     }
 
-    const store = await this.storesService.findStoreForAdminByStoreId(dto.store_id);
+    const isStoreExempt = this.isStoreExemptRole(sso.role as AdminRole);
+
+    if (!isStoreExempt && !dto.store_id) {
+      throw new BadRequestException('store_id is required for this role');
+    }
+
+    const store = isStoreExempt
+      ? null
+      : await this.storesService.findStoreForAdminByStoreId(dto.store_id!);
 
     const admin = await this.adminRepository.save(
       this.adminRepository.create({
         identity_id: sso.sub,
         mobile_no: sso.mobile_no,
         username: sso.username,
-        store_id: dto.store_id,
+        store_id: isStoreExempt ? null : dto.store_id,
         role: sso.role as AdminRole,
       }),
     );
@@ -74,8 +87,14 @@ export class AdminService {
     return admin;
   }
 
+  private isStoreExemptRole(role: AdminRole): boolean {
+    return (
+      role === AdminRole.EMEDIX_SUPERADMIN || role === AdminRole.EMEDIX_ADMIN
+    );
+  }
+
   private async findAdminStoreForProfile(admin: Admin): Promise<Store | null> {
-    if (admin.role === AdminRole.EMEDIX_SUPERADMIN && !admin.store_id) {
+    if (this.isStoreExemptRole(admin.role) && !admin.store_id) {
       return null;
     }
 

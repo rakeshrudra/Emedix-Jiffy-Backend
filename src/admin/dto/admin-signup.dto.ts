@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class AdminSignupDto {
-  @ApiProperty({ example: '2' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: '2' })
+  @IsOptional()
   @IsString()
-  store_id: string;
+  store_id?: string;
 }

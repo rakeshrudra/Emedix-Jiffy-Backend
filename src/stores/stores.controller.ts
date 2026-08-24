@@ -136,7 +136,7 @@ export class AdminStoresController {
 @ApiTags('Super Admin Stores')
 @ApiBearerAuth()
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
-@Roles(AdminRole.EMEDIX_SUPERADMIN)
+@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN)
 @Controller('api/admin/super/stores')
 export class SuperAdminStoresController {
   constructor(private readonly storesService: StoresService) {}
