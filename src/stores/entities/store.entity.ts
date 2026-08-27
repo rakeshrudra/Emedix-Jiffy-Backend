@@ -1,11 +1,8 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
 @Entity('stores')
 export class Store {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column({ name: 'store_id', unique: true })
+  @PrimaryColumn({ name: 'store_id', type: 'varchar', length: 20 })
   store_id: string;
 
   @Column({ name: 'emedix_name' })

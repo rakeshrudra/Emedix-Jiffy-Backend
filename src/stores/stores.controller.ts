@@ -6,7 +6,6 @@ import {
   HttpStatus,
   Param,
   ParseFloatPipe,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -97,16 +96,16 @@ export class StoresController {
 
   /**
    * GET /api/stores/:id
-   * Returns a single store by UUID.
+   * Returns a single store by id
    */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get a single store by UUID' })
-  @ApiParam({ name: 'id', description: 'Store UUID' })
+  @ApiOperation({ summary: 'Get a single store by ERP store ID' })
+  @ApiParam({ name: 'id', description: 'ERP store ID' })
   @ApiResponse({ status: 200, description: 'Store details' })
   @ApiResponse({ status: 404, description: 'Store not found' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+  async findOne(@Param('id') id: string) {
     return this.storesService.findOne(id);
   }
 }
