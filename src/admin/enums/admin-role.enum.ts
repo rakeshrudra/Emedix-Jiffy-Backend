@@ -6,6 +6,7 @@ export enum AdminRole {
   EMEDIX_DELX = 'emedix_delx',
   EMEDIX_ACCOUNTANT = 'emedix_accountant',
   EMEDIX_OP_ADMIN = 'emedix_op_admin',
+  STORE_OWNER = 'store_owner',
   STORE_ADMIN = 'store_admin',
   STORE_STAFF = 'store_staff',
 }
