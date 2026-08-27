@@ -123,11 +123,11 @@ export class StoresService {
   }
 
   /**
-   * GET /api/stores/:id
-   * Returns a single store by UUID.
+   * GET /api/stores/:store_id
+   * Returns a single store by store_id
    */
-  async findOne(id: string) {
-    const store = await this.storeRepository.findOne({ where: { id } });
+  async findOne(store_id: string) {
+    const store = await this.storeRepository.findOne({ where: { store_id } });
     if (!store) throw new NotFoundException('Store not found');
 
     return {
@@ -349,7 +349,7 @@ export class StoresService {
     const rows: any[] = await this.storeRepository.query(
       `
       SELECT
-        id, store_id, emedix_name, name, address_line_1, formatted_address,
+        store_id, emedix_name, name, address_line_1, formatted_address,
         city, state, pincode, country,
         latitude, longitude, delivery_radius_km, phone,
         opening_time, closing_time, is_active,
@@ -369,7 +369,6 @@ export class StoresService {
     );
 
     return rows.map((r) => ({
-      id: r.id,
       store_id: r.store_id,
       emedix_name: r.emedix_name,
       name: r.name,
@@ -488,7 +487,6 @@ export class StoresService {
 
   private format(s: Store) {
     return {
-      id: s.id,
       store_id: s.store_id,
       emedix_name: s.emedix_name,
       name: s.name,

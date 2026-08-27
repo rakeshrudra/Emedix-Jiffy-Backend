@@ -56,6 +56,7 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # local files
-emedix_jiffy.sql
-jiffi-148d7-firebase-adminsdk-fbsvc-329bef06a1.json
+/data
+/docs
+/firebase_creds
 err.logs
