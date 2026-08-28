@@ -87,9 +87,7 @@ export class Product {
     @ApiProperty({ example: 250 })
     @Column({
         name: 'product_stock',
-        type: 'decimal',
-        precision: 10,
-        scale: 2,
+        type: 'int',
         default: 0,
     })
     product_stock: number;
