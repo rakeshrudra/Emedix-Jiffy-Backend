@@ -78,9 +78,15 @@ export class ProductsService {
             throw new BadRequestException('q is required');
         }
 
+        const storeId = dto.store_id?.trim();
+        if (!storeId) {
+            throw new BadRequestException('store_id is required');
+        }
+
         const qb = this.productRepository
             .createQueryBuilder('p')
-            .where('p.status = :status', { status: ProductStatus.ENABLE })
+            .where('p.store_id = :store_id', { store_id: storeId })
+            .andWhere('p.status = :status', { status: ProductStatus.ENABLE })
             .andWhere('p.product_stock > 0')
             .andWhere(
                 `(
@@ -92,10 +98,6 @@ export class ProductsService {
             )
             .orderBy('p.product_name', 'ASC')
             .take(20);
-
-        if (dto.store_id?.trim()) {
-            qb.andWhere('p.store_id = :store_id', { store_id: dto.store_id.trim() });
-        }
 
         return qb.getMany();
     }
@@ -280,7 +282,7 @@ export class ProductsService {
                 product_code: row.product_code,
                 product_name: row.product_name,
                 product_type: row.product_type,
-                product_stock: row.product_stock,
+                product_stock: Math.floor(row.product_stock),
                 product_price: row.product_price,
                 product_discount_price: row.product_price,
                 product_company: row.product_company,

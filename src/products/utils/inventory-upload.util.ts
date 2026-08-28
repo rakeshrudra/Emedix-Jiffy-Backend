@@ -119,13 +119,14 @@ export function parseInventoryFile(buffer: Buffer): InventoryParseResult {
       continue;
     }
 
-    const product_stock = Number(stockRaw);
-    if (stockRaw === '' || Number.isNaN(product_stock)) {
+    const parsedStock = Number(stockRaw);
+    if (stockRaw === '' || Number.isNaN(parsedStock)) {
       warnings.push(
         `Row ${rowNum}: Current Stock "${stockRaw}" is not a number — this record was not uploaded.`,
       );
       continue;
     }
+    const product_stock = Math.floor(parsedStock);
 
     const product_price = Number(priceRaw);
     if (priceRaw === '' || Number.isNaN(product_price)) {
