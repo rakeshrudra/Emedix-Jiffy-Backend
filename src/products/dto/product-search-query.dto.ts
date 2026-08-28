@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ProductSearchQueryDto {
     @ApiProperty({ example: 'paracetamol', description: 'Search text' })
@@ -7,8 +7,8 @@ export class ProductSearchQueryDto {
     @IsString()
     q?: string;
 
-    @ApiPropertyOptional({ example: '001', description: 'Store ID' })
-    @IsOptional()
+    @ApiProperty({ example: '001', description: 'Store ID' })
+    @IsNotEmpty()
     @IsString()
-    store_id?: string;
+    store_id: string;
 }
