@@ -250,6 +250,8 @@ export class AdminOrdersController {
    * Updates the full item availability checklist for a pending order.
    */
   @Patch(':order_id/items')
+  @UseGuards(AdminRolesGuard)
+  @Roles(AdminRole.STORE_OWNER, AdminRole.STORE_ADMIN, AdminRole.STORE_STAFF)
   @ApiOperation({
     summary: 'Update the full item availability checklist for a pending order',
     description:
@@ -286,6 +288,8 @@ export class AdminOrdersController {
    * Updates order status through the Phase 1 pickup workflow.
    */
   @Patch(':order_id/status')
+  @UseGuards(AdminRolesGuard)
+  @Roles(AdminRole.STORE_OWNER, AdminRole.STORE_ADMIN, AdminRole.STORE_STAFF)
   @ApiOperation({
     summary: 'Update order status through the Phase 1 pickup workflow',
     description: `${OrderStatus.PENDING} -> ${OrderStatus.CONFIRMED} -> ${OrderStatus.READY_FOR_PICKUP} -> ${OrderStatus.PICKED_UP}`,
@@ -322,6 +326,8 @@ export class AdminOrdersController {
    * Cancels an order for the authenticated admin store (allowed until READY_FOR_PICKUP).
    */
   @Patch(':order_id/cancel')
+  @UseGuards(AdminRolesGuard)
+  @Roles(AdminRole.STORE_OWNER, AdminRole.STORE_ADMIN, AdminRole.STORE_STAFF)
   @ApiOperation({ summary: 'Cancel an order (store)' })
   @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
