@@ -61,4 +61,46 @@ export class NotificationsService {
       );
     }
   }
+
+  /**
+   * Best-effort push send. Never throws — a notification failure must not
+   * affect the operation it's reporting on.
+   */
+  async sendOrderTotalUpdate(
+    user_id: string,
+    title: string,
+    body: string,
+    payload: OrderPushPayload & { total_amount: number },
+  ): Promise<void> {
+    try {
+      const user = await this.usersService.findById(user_id);
+      if (!user?.fcm_token) return;
+
+      await admin.messaging().send({
+        token: user.fcm_token,
+        notification: { title, body },
+        data: {
+          type: 'ORDER_TOTAL_UPDATE',
+          order_id: String(payload.order_id),
+          order_number: payload.order_number,
+          status: payload.status,
+          total_amount: String(payload.total_amount),
+        },
+        android: { priority: 'high' },
+        apns: { payload: { aps: { sound: 'default' } } },
+      });
+    } catch (error) {
+      const code = error?.code as string | undefined;
+
+      if (code && UNREGISTERED_ERROR_CODES.has(code)) {
+        this.logger.warn(`Dropping dead FCM token for user ${user_id} (${code})`);
+        await this.usersService.clearFcmToken(user_id).catch(() => { });
+        return;
+      }
+
+      this.logger.warn(
+        `Push notification failed for user ${user_id}: ${error?.message ?? error}`,
+      );
+    }
+  }
 }

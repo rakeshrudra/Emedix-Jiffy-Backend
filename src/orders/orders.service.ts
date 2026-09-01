@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import {
@@ -226,7 +226,18 @@ export class OrdersService {
       if (product) productsByCode.set(cartItem.product_code, product);
     }
 
-    // 8. Compute totals server-side from cart item prices — never trust the client
+    // 8. Ordered quantity must not exceed current stock
+    for (const cartItem of cart.items) {
+      const product = productsByCode.get(cartItem.product_code);
+      const availableStock = product?.product_stock ?? 0;
+      if (cartItem.quantity > availableStock) {
+        throw new BadRequestException(
+          `${cartItem.product_name} — only ${availableStock} in stock, but ${cartItem.quantity} were ordered.`,
+        );
+      }
+    }
+
+    // 9. Compute totals server-side from cart item prices — never trust the client
     const subtotal = cart.items.reduce((sum, item) => {
       const effectivePrice =
         Number(item.product_discount_price) || Number(item.product_price);
@@ -532,6 +543,14 @@ export class OrdersService {
 
     const items = [...order.items].sort((a, b) => a.id - b.id);
 
+    const productCodes = [...new Set(items.map((item) => item.product_code))];
+    const products = await this.orderRepository.manager.find(Product, {
+      where: { store_id, product_code: In(productCodes) },
+    });
+    const stockByProductCode = new Map(
+      products.map((product) => [product.product_code, product.product_stock]),
+    );
+
     return {
       order_id: order.id,
       order_no: order.order_number,
@@ -551,6 +570,7 @@ export class OrdersService {
         hsn_code: item.hsn_code,
         is_available: item.is_available,
         confirmed_quantity: item.confirmed_quantity,
+        available_stock: stockByProductCode.get(item.product_code) ?? 0,
       })),
     };
   }
@@ -601,6 +621,37 @@ export class OrdersService {
         }
       }
 
+      const productCodes = [...new Set(order.items.map((item) => item.product_code))];
+      const products = await manager.find(Product, {
+        where: { store_id, product_code: In(productCodes) },
+      });
+      const stockByProductCode = new Map(
+        products.map((product) => [product.product_code, product.product_stock]),
+      );
+
+      const confirmedQuantityByProductCode = new Map<string, number>();
+      for (const item of order.items) {
+        const submitted = submittedById.get(item.id);
+        if (!submitted.is_available) continue;
+
+        confirmedQuantityByProductCode.set(
+          item.product_code,
+          (confirmedQuantityByProductCode.get(item.product_code) ?? 0) +
+            submitted.confirmed_quantity,
+        );
+      }
+
+      for (const [product_code, totalConfirmedQuantity] of confirmedQuantityByProductCode) {
+        const availableStock = stockByProductCode.get(product_code) ?? 0;
+        if (totalConfirmedQuantity > availableStock) {
+          throw new BadRequestException(
+            `Confirmed quantity for product "${product_code}" (${totalConfirmedQuantity}) exceeds current stock (${availableStock}).`,
+          );
+        }
+      }
+
+      const previousTotalAmount = Number(order.total_amount);
+
       for (const item of order.items) {
         const submitted = submittedById.get(item.id);
 
@@ -613,17 +664,40 @@ export class OrdersService {
 
         item.is_available = submitted.is_available;
         item.confirmed_quantity = submitted.confirmed_quantity;
+
+        const effectivePrice =
+          Number(item.product_discount_price) || Number(item.product_price);
+        item.total = effectivePrice * item.confirmed_quantity;
       }
 
       const updatedItems = await manager.save(OrderItem, order.items);
 
+      const subtotal = updatedItems.reduce(
+        (sum, item) => sum + Number(item.total), 0,
+      );
+      order.subtotal = subtotal;
+      order.total_amount =
+        subtotal + Number(order.delivery_charge) - Number(order.discount);
+      const updatedOrder = await manager.save(Order, order);
+
+      if (Number(updatedOrder.total_amount) !== previousTotalAmount) {
+        this.notifyOrderTotalUpdated(
+          updatedOrder.user_id,
+          updatedOrder.id,
+          updatedOrder.order_number,
+          Number(updatedOrder.total_amount),
+        );
+      }
+
       return {
         order_id: order.id,
+        total_amount: updatedOrder.total_amount,
         items: updatedItems.map((item) => ({
           id: item.id,
           ordered_quantity: item.qty,
           is_available: item.is_available,
           confirmed_quantity: item.confirmed_quantity,
+          total: item.total,
         })),
       };
     });
@@ -986,7 +1060,7 @@ export class OrdersService {
   }): void {
     const { id, is_available, confirmed_quantity, ordered_quantity } = entry;
 
-    if (confirmed_quantity < 0 || confirmed_quantity > ordered_quantity) {
+    if (confirmed_quantity < 0) {
       throw new BadRequestException(
         `Invalid confirmed quantity for order item ${id}.`,
       );
@@ -1058,6 +1132,33 @@ export class OrdersService {
         const message2 = err instanceof Error ? err.message : String(err);
         this.logger.warn(
           `Push notification failed for user ${user_id}, order ${order_number}: ${message2}`,
+        );
+      });
+  }
+
+  private notifyOrderTotalUpdated(
+    user_id: string,
+    order_id: number,
+    order_number: string,
+    total_amount: number,
+  ): void {
+    // Best-effort, fire-and-forget — must never affect the item-update response.
+    this.notificationsService
+      .sendOrderTotalUpdate(
+        user_id,
+        `Order ${order_number}`,
+        `Your order total has been updated to ₹${total_amount.toFixed(2)} based on confirmed quantities.`,
+        {
+          order_id,
+          order_number,
+          status: OrderStatus.PENDING,
+          total_amount,
+        },
+      )
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Push notification failed for user ${user_id}, order ${order_number}: ${message}`,
         );
       });
   }
