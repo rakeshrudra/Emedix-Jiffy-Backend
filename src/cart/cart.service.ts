@@ -27,7 +27,7 @@ export class CartService {
       const cart = await this.findCart(user_id, store_id);
       return {
         success: true,
-        data: cart ? this.format(cart) : this.emptyCart(store_id),
+        data: cart ? await this.formatWithStock(cart) : this.emptyCart(store_id),
       };
     }
 
@@ -40,7 +40,7 @@ export class CartService {
     return {
       success: true,
       data: {
-        carts: carts.map((cart) => this.format(cart)),
+        carts: await Promise.all(carts.map((cart) => this.formatWithStock(cart))),
         cart_count: carts.length,
       },
     };
@@ -90,7 +90,7 @@ export class CartService {
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(user_id, dto.store_id)),
+      data: await this.formatWithStock(await this.getCartOrThrow(user_id, dto.store_id)),
     };
   }
 
@@ -122,7 +122,7 @@ export class CartService {
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(user_id, cart.store_id)),
+      data: await this.formatWithStock(await this.getCartOrThrow(user_id, cart.store_id)),
     };
   }
 
@@ -134,7 +134,7 @@ export class CartService {
 
     return {
       success: true,
-      data: this.format(await this.getCartOrThrow(user_id, cart.store_id)),
+      data: await this.formatWithStock(await this.getCartOrThrow(user_id, cart.store_id)),
     };
   }
 
@@ -283,7 +283,23 @@ export class CartService {
     };
   }
 
-  private format(cart: Cart) {
+  private async getStockByProductCode(cart: Cart): Promise<Map<string, number>> {
+    const productCodes = [...new Set((cart.items ?? []).map((item) => item.product_code))];
+    const products = await this.productsService.findManyByCodes(
+      cart.store_id,
+      productCodes,
+    );
+    return new Map(
+      products.map((product) => [product.product_code, this.productsService.parseStock(product)]),
+    );
+  }
+
+  private async formatWithStock(cart: Cart) {
+    const stockByProductCode = await this.getStockByProductCode(cart);
+    return this.format(cart, stockByProductCode);
+  }
+
+  private format(cart: Cart, stockByProductCode: Map<string, number>) {
     const items = (cart.items ?? []).map((item) => {
       const effectivePrice =
         Number(item.product_discount_price) || Number(item.product_price);
@@ -297,6 +313,7 @@ export class CartService {
         effective_price: effectivePrice,
         quantity: item.quantity,
         line_total: effectivePrice * item.quantity,
+        available_stock: stockByProductCode.get(item.product_code) ?? 0,
       };
     });
 

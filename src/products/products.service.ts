@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Product, ProductStatus } from './entities/product.entity';
 import { ProductSwil } from './entities/product-swil.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
@@ -109,6 +109,18 @@ export class ProductsService {
     async findByCode(store_id: string, product_code: string): Promise<Product | null> {
         return this.productRepository.findOne({
             where: { product_code: product_code, store_id: store_id },
+        });
+    }
+
+    /**
+     * Batch product lookup for a store, scoped to a set of product codes —
+     * used to attach live stock to cart/order line items without an N+1.
+     */
+    async findManyByCodes(store_id: string, product_codes: string[]): Promise<Product[]> {
+        if (product_codes.length === 0) return [];
+
+        return this.productRepository.find({
+            where: { store_id: store_id, product_code: In(product_codes) },
         });
     }
 
