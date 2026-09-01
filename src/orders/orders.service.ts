@@ -10,7 +10,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { FulfillmentType, Order, OrderActor, OrderStatus } from './entities/order.entity';
+import {
+  FulfillmentType,
+  Order,
+  OrderActor,
+  OrderStatus,
+} from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -34,6 +39,7 @@ export interface AdminOrderSummary {
   order_id: number;
   order_no: string;
   store_id: string;
+  emedix_name: string;
   customer_name: string;
   customer_phone: string;
   recipient_name: string;
@@ -74,7 +80,12 @@ export interface OrderListItem {
   item_count: number;
   recipient_name: string;
   recipient_mobile_number: string;
-  pickup_address: { emedix_name: string; name: string; city: string; state: string } | null;
+  pickup_address: {
+    emedix_name: string;
+    name: string;
+    city: string;
+    state: string;
+  } | null;
 }
 
 type OrderWithItemCount = Order & { item_count: number };
@@ -128,7 +139,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
-  ) { }
+  ) {}
 
   async createOrder(user_id: string, dto: CreateOrderDto): Promise<Order> {
     // 1. Redis idempotency — fast path
@@ -152,12 +163,16 @@ export class OrdersService {
       this.logger.warn(`Idempotency hit (DB) for key: ${dto.idempotency_key}`);
       this.redis
         .set(redisKey, existing.id, 'EX', IDEMPOTENCY_TTL)
-        .catch(() => { });
+        .catch(() => {});
       return existing;
     }
 
     // 3. Store must be active and orderable for either now or the selected schedule
-    if (dto.scheduled_date || dto.scheduled_start_time || dto.scheduled_end_time) {
+    if (
+      dto.scheduled_date ||
+      dto.scheduled_start_time ||
+      dto.scheduled_end_time
+    ) {
       await this.storesService.assertOrderableAt(
         dto.store_id,
         dto.scheduled_date,
@@ -263,18 +278,18 @@ export class OrdersService {
 
       const orderDeliveryAddress = deliveryAddress
         ? this.orderDeliveryAddressRepository.create({
-          source_address_id: deliveryAddress.id,
-          label: deliveryAddress.label,
-          address_line_1: deliveryAddress.address_line_1,
-          address_line_2: deliveryAddress.address_line_2,
-          formatted_address: deliveryAddress.formatted_address,
-          city: deliveryAddress.city,
-          state: deliveryAddress.state,
-          pincode: deliveryAddress.pincode,
-          country: deliveryAddress.country,
-          latitude: deliveryAddress.latitude,
-          longitude: deliveryAddress.longitude,
-        })
+            source_address_id: deliveryAddress.id,
+            label: deliveryAddress.label,
+            address_line_1: deliveryAddress.address_line_1,
+            address_line_2: deliveryAddress.address_line_2,
+            formatted_address: deliveryAddress.formatted_address,
+            city: deliveryAddress.city,
+            state: deliveryAddress.state,
+            pincode: deliveryAddress.pincode,
+            country: deliveryAddress.country,
+            latitude: deliveryAddress.latitude,
+            longitude: deliveryAddress.longitude,
+          })
         : null;
 
       const order = this.orderRepository.create({
@@ -319,12 +334,18 @@ export class OrdersService {
     );
 
     // 7. Push the new order to the store's admin dashboard in real time via web sockets
-    this.usersService
-      .findById(user_id)
-      .then((user) => {
+    Promise.all([
+      this.usersService.findById(user_id),
+      this.storesService.findManyByStoreIds([savedOrder.store_id]),
+    ])
+      .then(([user, stores]) => {
         this.ordersGateway.emitNewOrder(
           savedOrder.store_id,
-          this.buildAdminOrderSummary(savedOrder, user),
+          this.buildAdminOrderSummary(
+            savedOrder,
+            user,
+            stores[0]?.emedix_name ?? '',
+          ),
         );
       })
       .catch((err) => {
@@ -393,11 +414,11 @@ export class OrdersService {
         recipient_mobile_number: order.recipient_mobile_number,
         pickup_address: store
           ? {
-            emedix_name: store.emedix_name,
-            name: store.name,
-            city: store.city,
-            state: store.state,
-          }
+              emedix_name: store.emedix_name,
+              name: store.name,
+              city: store.city,
+              state: store.state,
+            }
           : null,
       };
     });
@@ -405,14 +426,19 @@ export class OrdersService {
     return { data, total, page, pages: Math.ceil(total / limit) };
   }
 
-  async getOrderById(order_id: number, user_id: string): Promise<Order & { pickup_address: OrderPickupAddress | null }> {
+  async getOrderById(
+    order_id: number,
+    user_id: string,
+  ): Promise<Order & { pickup_address: OrderPickupAddress | null }> {
     const order = await this.orderRepository.findOne({
       where: { id: order_id, user_id: user_id },
       relations: ['items'],
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    const store = await this.storesService.findPickupAddressFields(order.store_id);
+    const store = await this.storesService.findPickupAddressFields(
+      order.store_id,
+    );
 
     return {
       ...order,
@@ -436,10 +462,20 @@ export class OrdersService {
       take: limit,
     });
 
+    const storeIds = [...new Set(orders.map((order) => order.store_id))];
+    const stores = await this.storesService.findManyByStoreIds(storeIds);
+    const emedixNameByStoreId = new Map(
+      stores.map((store) => [store.store_id, store.emedix_name]),
+    );
+
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const user = await this.usersService.findById(order.user_id);
-        return this.buildAdminOrderSummary(order, user);
+        return this.buildAdminOrderSummary(
+          order,
+          user,
+          emedixNameByStoreId.get(order.store_id) ?? '',
+        );
       }),
     );
 
@@ -470,10 +506,20 @@ export class OrdersService {
       take: limit,
     });
 
+    const storeIds = [...new Set(orders.map((order) => order.store_id))];
+    const stores = await this.storesService.findManyByStoreIds(storeIds);
+    const emedixNameByStoreId = new Map(
+      stores.map((store) => [store.store_id, store.emedix_name]),
+    );
+
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const user = await this.usersService.findById(order.user_id);
-        return this.buildAdminOrderSummary(order, user);
+        return this.buildAdminOrderSummary(
+          order,
+          user,
+          emedixNameByStoreId.get(order.store_id) ?? '',
+        );
       }),
     );
 
@@ -694,7 +740,10 @@ export class OrdersService {
 
       const savedOrder = await manager.save(Order, order);
 
-      if (previousStatus === OrderStatus.PENDING && targetStatus === OrderStatus.CONFIRMED) {
+      if (
+        previousStatus === OrderStatus.PENDING &&
+        targetStatus === OrderStatus.CONFIRMED
+      ) {
         await this.reduceProductStock(manager, store_id, order.items);
       }
 
@@ -759,7 +808,11 @@ export class OrdersService {
       const savedOrder = await manager.save(Order, order);
 
       if (RESTORE_STOCK_STATES.includes(previousStatus)) {
-        await this.restoreProductStock(manager, savedOrder.store_id, order.items);
+        await this.restoreProductStock(
+          manager,
+          savedOrder.store_id,
+          order.items,
+        );
       }
 
       this.logger.log(
@@ -776,12 +829,18 @@ export class OrdersService {
       savedOrder.order_number,
     );
 
-    this.usersService
-      .findById(savedOrder.user_id)
-      .then((user) => {
+    Promise.all([
+      this.usersService.findById(savedOrder.user_id),
+      this.storesService.findManyByStoreIds([savedOrder.store_id]),
+    ])
+      .then(([user, stores]) => {
         this.ordersGateway.emitOrderUpdated(
           savedOrder.store_id,
-          this.buildAdminOrderSummary(savedOrder, user),
+          this.buildAdminOrderSummary(
+            savedOrder,
+            user,
+            stores[0]?.emedix_name ?? '',
+          ),
         );
       })
       .catch((err) => {
@@ -799,7 +858,8 @@ export class OrdersService {
       where: { id: order_id },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.user_id !== user_id) throw new ForbiddenException('Access denied');
+    if (order.user_id !== user_id)
+      throw new ForbiddenException('Access denied');
 
     const invoice = await this.invoicesService.findByOrderNumber(
       order.order_number,
@@ -810,7 +870,10 @@ export class OrdersService {
   }
 
   async fetchPendingOrders(store_id: string): Promise<Order[]> {
-    const where: Partial<Order> = { status: OrderStatus.PENDING, store_id: store_id };
+    const where: Partial<Order> = {
+      status: OrderStatus.PENDING,
+      store_id: store_id,
+    };
 
     const orders = await this.orderRepository.find({
       where,
@@ -884,7 +947,9 @@ export class OrdersService {
           product_stock: () => 'GREATEST(product_stock - :quantity, 0)',
         })
         .where('store_id = :store_id', { store_id })
-        .andWhere('product_code = :product_code', { product_code: item.product_code })
+        .andWhere('product_code = :product_code', {
+          product_code: item.product_code,
+        })
         .setParameters({ quantity })
         .execute();
     }
@@ -906,7 +971,9 @@ export class OrdersService {
           product_stock: () => 'product_stock + :quantity',
         })
         .where('store_id = :store_id', { store_id })
-        .andWhere('product_code = :product_code', { product_code: item.product_code })
+        .andWhere('product_code = :product_code', {
+          product_code: item.product_code,
+        })
         .setParameters({ quantity })
         .execute();
     }
@@ -957,11 +1024,13 @@ export class OrdersService {
   private buildAdminOrderSummary(
     order: Order,
     user: { name: string; mobile_no: string } | null,
+    emedix_name: string,
   ): AdminOrderSummary {
     return {
       order_id: order.id,
       order_no: order.order_number,
       store_id: order.store_id,
+      emedix_name,
       customer_name: user?.name ?? '',
       customer_phone: user?.mobile_no ?? '',
       recipient_name: order.recipient_name,
