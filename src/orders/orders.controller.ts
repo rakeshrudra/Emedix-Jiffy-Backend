@@ -40,7 +40,7 @@ import { OrderActor, OrderStatus } from './entities/order.entity';
 @UseGuards(JwtAuthGuard)
 @Controller('api/orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) { }
+  constructor(private readonly ordersService: OrdersService) {}
 
   /**
    * POST /api/orders
@@ -129,8 +129,14 @@ export class OrdersController {
   @ApiOperation({ summary: 'Get invoice for a specific order' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   @ApiResponse({ status: 200, description: 'Invoice returned' })
-  @ApiResponse({ status: 403, description: 'Access denied — order does not belong to user', })
-  @ApiResponse({ status: 404, description: 'Order not found or invoice not yet generated', })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied — order does not belong to user',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Order not found or invoice not yet generated',
+  })
   async getOrderInvoice(@Request() req, @Param('id', ParseIntPipe) id: number) {
     const invoice = await this.ordersService.getOrderInvoice(
       id,
@@ -151,7 +157,9 @@ export class OrdersController {
   @ApiOperation({ summary: 'Cancel an order (user)' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   @ApiResponse({ status: 200, description: 'Order cancelled' })
-  @ApiBadRequestResponse({ description: 'Order cannot be cancelled in its current state' })
+  @ApiBadRequestResponse({
+    description: 'Order cannot be cancelled in its current state',
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async cancelOrder(
     @Request() req,
@@ -178,7 +186,7 @@ export class OrdersController {
 @UseGuards(AdminJwtAuthGuard)
 @Controller('api/admin/orders')
 export class AdminOrdersController {
-  constructor(private readonly ordersService: OrdersService) { }
+  constructor(private readonly ordersService: OrdersService) {}
 
   /**
    * GET /api/admin/orders
@@ -201,10 +209,7 @@ export class AdminOrdersController {
   @ApiQuery({ name: 'limit', required: false, example: 30 })
   @ApiResponse({ status: 200, description: 'Admin order list returned' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getStoreOrders(
-    @Request() req,
-    @Query() query: AdminOrdersQueryDto,
-  ) {
+  async getStoreOrders(@Request() req, @Query() query: AdminOrdersQueryDto) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 30));
     return this.ordersService.getAdminOrders(
@@ -250,6 +255,13 @@ export class AdminOrdersController {
    * Updates the full item availability checklist for a pending order.
    */
   @Patch(':order_id/items')
+  @UseGuards(AdminRolesGuard)
+  @Roles(
+    AdminRole.EMEDIX_SUPERADMIN,
+    AdminRole.STORE_OWNER,
+    AdminRole.STORE_ADMIN,
+    AdminRole.STORE_STAFF,
+  )
   @ApiOperation({
     summary: 'Update the full item availability checklist for a pending order',
     description:
@@ -263,6 +275,10 @@ export class AdminOrdersController {
   })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
+  @ApiResponse({
+    status: 403,
+    description: 'Read-only role — order modification not permitted',
+  })
   async updateItems(
     @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: UpdateAdminOrderItemsDto,
@@ -286,18 +302,32 @@ export class AdminOrdersController {
    * Updates order status through the Phase 1 pickup workflow.
    */
   @Patch(':order_id/status')
+  @UseGuards(AdminRolesGuard)
+  @Roles(
+    AdminRole.EMEDIX_SUPERADMIN,
+    AdminRole.STORE_OWNER,
+    AdminRole.STORE_ADMIN,
+    AdminRole.STORE_STAFF,
+  )
   @ApiOperation({
     summary: 'Update order status through the Phase 1 pickup workflow',
     description: `${OrderStatus.PENDING} -> ${OrderStatus.CONFIRMED} -> ${OrderStatus.READY_FOR_PICKUP} -> ${OrderStatus.PICKED_UP}`,
   })
   @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiBody({ type: UpdateAdminOrderStatusDto })
-  @ApiResponse({ status: 200, description: 'Order status updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Order status updated successfully',
+  })
   @ApiBadRequestResponse({
     description: 'Invalid transition or incomplete checklist',
   })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
+  @ApiResponse({
+    status: 403,
+    description: 'Read-only role — order modification not permitted',
+  })
   async updateStatus(
     @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: UpdateAdminOrderStatusDto,
@@ -322,12 +352,25 @@ export class AdminOrdersController {
    * Cancels an order for the authenticated admin store (allowed until READY_FOR_PICKUP).
    */
   @Patch(':order_id/cancel')
+  @UseGuards(AdminRolesGuard)
+  @Roles(
+    AdminRole.EMEDIX_SUPERADMIN,
+    AdminRole.STORE_OWNER,
+    AdminRole.STORE_ADMIN,
+    AdminRole.STORE_STAFF,
+  )
   @ApiOperation({ summary: 'Cancel an order (store)' })
   @ApiParam({ name: 'order_id', type: Number, example: 1 })
   @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
-  @ApiBadRequestResponse({ description: 'Order cannot be cancelled in its current state' })
+  @ApiBadRequestResponse({
+    description: 'Order cannot be cancelled in its current state',
+  })
   @ApiUnauthorizedResponse({ description: 'Invalid admin access token' })
   @ApiNotFoundResponse({ description: 'Order not found or not accessible' })
+  @ApiResponse({
+    status: 403,
+    description: 'Read-only role — order modification not permitted',
+  })
   async cancelOrder(
     @Param('order_id', ParseIntPipe) order_id: number,
     @Body() dto: CancelOrderDto,
@@ -367,7 +410,12 @@ export class SuperAdminAllOrdersController {
     description:
       'Returns paginated orders across all stores. Use optional store_id and status queries to filter the dashboard.',
   })
-  @ApiQuery({ name: 'store_id', required: false, description: 'Optional ERP store ID', example: '001' })
+  @ApiQuery({
+    name: 'store_id',
+    required: false,
+    description: 'Optional ERP store ID',
+    example: '001',
+  })
   @ApiQuery({
     name: 'status',
     required: false,
