@@ -42,7 +42,7 @@ export class Product {
     product_code: string;
 
     @ApiProperty({ example: 'Cipla Ltd' })
-    @Index('IDX_products_product_company')
+    @Index()
     @Column({ name: 'product_company' })
     product_company: string;
 
