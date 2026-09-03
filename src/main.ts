@@ -33,6 +33,21 @@ async function bootstrap() {
     .setVersion('1.0')
     .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'x-api-key')
     .addBearerAuth()
+    .addTag('App')
+    .addTag('Admin Auth')
+    .addTag('Authentication')
+    .addTag('emedix-webhook')
+    .addTag('Admin Products')
+    .addTag('Products')
+    .addTag('Super Admin Orders')
+    .addTag('Admin Orders')
+    .addTag('Orders')
+    .addTag('Super Admin Stores')
+    .addTag('Admin Stores')
+    .addTag('Stores')
+    .addTag('Cart')
+    .addTag('Addresses')
+    .addTag('Maps')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
