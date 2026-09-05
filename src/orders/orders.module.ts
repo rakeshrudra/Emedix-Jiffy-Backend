@@ -7,7 +7,7 @@ import {
     SuperAdminAllOrdersController,
 } from './orders.controller';
 import { OrdersService } from './orders.service';
-import { OrdersGateway } from './orders.gateway';
+import { CustomerOrdersGateway, OrdersGateway } from './orders.gateway';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderDeliveryAddress } from './entities/order-delivery-address.entity';
@@ -40,7 +40,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
         AdminOrdersController,
         SuperAdminAllOrdersController,
     ],
-    providers: [OrdersService, OrdersGateway, JwtAuthGuard, AdminJwtAuthGuard],
+    providers: [
+        OrdersService,
+        OrdersGateway,
+        CustomerOrdersGateway,
+        JwtAuthGuard,
+        AdminJwtAuthGuard,
+    ],
     exports: [OrdersService],
 })
 export class OrdersModule { }
