@@ -140,15 +140,15 @@ export class Order {
   @Column({ name: 'invoice_number', default: '' })
   invoice_number: string;
 
-  @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
-  cancelled_at: Date;
-
-  @Column({ name: 'cancellation_reason', type: 'text', default: '' })
-  cancellation_reason: string;
-
   @ApiProperty({ enum: ['USER', 'STORE'], required: false })
   @Column({ name: 'cancelled_by', type: 'enum', enum: ['USER', 'STORE'], nullable: true })
   cancelled_by: 'USER' | 'STORE' | null;
+
+  @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
+  cancelled_at: Date;
+
+  @Column({ name: 'cancellation_reason', type: 'text', nullable: true })
+  cancellation_reason: string | null;
 
   @OneToMany(() => OrderItem, (item) => item.order, {
     cascade: true,
