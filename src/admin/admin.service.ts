@@ -13,6 +13,15 @@ import { Admin } from './entities/admin.entity';
 import { AdminRole } from './enums/admin-role.enum';
 import { SsoTokenPayload } from '../common/guards/sso-auth.guard';
 
+export interface AuthenticatedAdmin {
+  sub: string;
+  identity_id: string;
+  mobile_no: string;
+  username: string;
+  store_id: string | null;
+  role: AdminRole;
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -78,6 +87,19 @@ export class AdminService {
     return this.adminRepository.findOneBy({ identity_id });
   }
 
+  async acceptTerms(user: AuthenticatedAdmin) {
+    if (!user.store_id) {
+      throw new BadRequestException('Admin is not assigned to a store');
+    }
+
+    await this.storesService.acceptTerms(user.store_id);
+
+    return {
+      success: true,
+      data: { terms_accepted: true },
+    };
+  }
+
   private async findExistingAdmin(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({ where: { id } });
     if (!admin) {
@@ -110,6 +132,7 @@ export class AdminService {
       id: admin.id,
       username: admin.username,
       role: admin.role,
+      mobile_no: admin.mobile_no,
       store: store ? {
         id: admin.store_id,
         name: store.name,
@@ -120,6 +143,7 @@ export class AdminService {
         opening_time: store.opening_time,
         closing_time: store.closing_time,
         is_active: store.is_active,
+        terms_accepted: store.terms_accepted,
       } : null,
     };
   }

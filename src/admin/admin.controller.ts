@@ -21,6 +21,9 @@ import type { Response } from 'express';
 import { AdminService } from './admin.service';
 import { AdminSignupDto } from './dto/admin-signup.dto';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { AdminRole } from './enums/admin-role.enum';
 import { SsoAuthGuard } from '../common/guards/sso-auth.guard';
 
 @ApiTags('Admin Auth')
@@ -61,6 +64,19 @@ export class AdminController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   me(@Request() req: any) {
     return this.adminService.getCurrentAdmin(req.user?.sub);
+  }
+
+  @Post('accept-terms')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
+  @Roles(AdminRole.STORE_OWNER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Store owner accepts the static Terms & Conditions, unlocking the dashboard for the store and its store_* roles' })
+  @ApiResponse({ status: 200, description: 'Terms accepted, store unlocked' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Store owner access required' })
+  acceptTerms(@Request() req: any) {
+    return this.adminService.acceptTerms(req.user);
   }
 
   @Post('logout')
