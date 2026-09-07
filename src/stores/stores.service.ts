@@ -209,6 +209,15 @@ export class StoresService {
     return store;
   }
 
+  async acceptTerms(store_id: string): Promise<void> {
+    const store = await this.findStoreForAdminByStoreId(store_id);
+
+    if (!store.terms_accepted) {
+      store.terms_accepted = true;
+      await this.storeRepository.save(store);
+    }
+  }
+
   async findManyByStoreIds(store_ids: string[]): Promise<Store[]> {
     if (!store_ids.length) return [];
 

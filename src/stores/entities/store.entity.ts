@@ -51,4 +51,7 @@ export class Store {
 
   @Column({ name: 'is_active', default: true })
   is_active: boolean;
+
+  @Column({ name: 'terms_accepted', default: false })
+  terms_accepted: boolean;
 }
