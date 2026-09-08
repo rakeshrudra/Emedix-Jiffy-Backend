@@ -63,7 +63,7 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Current admin returned' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   me(@Request() req: any) {
-    return this.adminService.getCurrentAdmin(req.user?.sub);
+    return this.adminService.getCurrentAdmin(req.admin?.sub);
   }
 
   @Post('accept-terms')

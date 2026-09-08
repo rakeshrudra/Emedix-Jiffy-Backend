@@ -52,7 +52,7 @@ export class AdminJwtAuthGuard implements CanActivate {
             throw new UnauthorizedException('Admin is not provisioned');
         }
 
-        request['user'] = {
+        request['admin'] = {
             sub: admin.id,
             identity_id: admin.identity_id,
             mobile_no: admin.mobile_no,

@@ -213,7 +213,7 @@ export class AdminOrdersController {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 30));
     return this.ordersService.getAdminOrders(
-      req.user?.store_id,
+      req.admin?.store_id,
       query.status,
       page,
       limit,
@@ -240,7 +240,7 @@ export class AdminOrdersController {
   ) {
     const data = await this.ordersService.getAdminOrderItems(
       order_id,
-      req.user?.store_id,
+      req.admin?.store_id,
     );
 
     return {
@@ -286,7 +286,7 @@ export class AdminOrdersController {
   ) {
     const data = await this.ordersService.updateAdminOrderItems(
       order_id,
-      req.user?.store_id,
+      req.admin?.store_id,
       dto,
     );
 
@@ -335,9 +335,9 @@ export class AdminOrdersController {
   ) {
     const data = await this.ordersService.updateAdminOrderStatus(
       order_id,
-      req.user?.store_id,
+      req.admin?.store_id,
       dto,
-      req.user?.sub,
+      req.admin?.sub,
     );
 
     return {
@@ -379,7 +379,7 @@ export class AdminOrdersController {
     const order = await this.ordersService.cancelOrder(
       order_id,
       OrderActor.STORE,
-      { store_id: req.user?.store_id },
+      { store_id: req.admin?.store_id },
       dto,
     );
 

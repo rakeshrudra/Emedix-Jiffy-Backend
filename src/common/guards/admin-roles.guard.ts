@@ -21,7 +21,7 @@ export class AdminRolesGuard implements CanActivate {
     if (!roles?.length) return true;
 
     const request = context.switchToHttp().getRequest();
-    const role = request.user?.role;
+    const role = request.admin?.role;
 
     if (!roles.includes(role)) {
       throw new ForbiddenException('Access denied');
