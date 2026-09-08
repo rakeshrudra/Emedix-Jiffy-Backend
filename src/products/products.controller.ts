@@ -148,7 +148,7 @@ export class AdminProductsController {
     @Query() query: AdminProductInventoryQueryDto,
   ) {
     const result = await this.productsService.listAdminInventory(
-      req.user.store_id,
+      req.admin.store_id,
       query,
     );
 
@@ -192,7 +192,7 @@ export class AdminProductsController {
     }
 
     const result = await this.productsService.uploadInventory(
-      req.user.store_id,
+      req.admin.store_id,
       file.buffer,
     );
 
