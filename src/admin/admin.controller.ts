@@ -76,7 +76,7 @@ export class AdminController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Store owner access required' })
   acceptTerms(@Request() req: any) {
-    return this.adminService.acceptTerms(req.user);
+    return this.adminService.acceptTerms(req.admin);
   }
 
   @Post('logout')
