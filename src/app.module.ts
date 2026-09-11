@@ -18,6 +18,7 @@ import { CartModule } from './cart/cart.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { AdminModule } from './admin/admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AppVersionModule } from './app-version/app-version.module';
 import databaseConfig from './database/database.config';
 
 @Module({
@@ -50,6 +51,7 @@ import databaseConfig from './database/database.config';
     DeliveryModule,
     AdminModule,
     NotificationsModule,
+    AppVersionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
