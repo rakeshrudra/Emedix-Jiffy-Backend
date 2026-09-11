@@ -110,7 +110,6 @@ export class StoresController {
   }
 }
 
-
 @ApiTags('Admin Stores')
 @ApiBearerAuth()
 @UseGuards(SsoAuthGuard)
@@ -132,10 +131,10 @@ export class AdminStoresController {
   }
 }
 
-@ApiTags('Super Admin Stores')
+@ApiTags('Super Admin & Admin Stores')
 @ApiBearerAuth()
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
-@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN)
+@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN, AdminRole.EMEDIX_OP_ADMIN)
 @Controller('api/admin/super/stores')
 export class SuperAdminStoresController {
   constructor(private readonly storesService: StoresService) {}

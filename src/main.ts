@@ -42,7 +42,7 @@ async function bootstrap() {
     .addTag('Super Admin Orders')
     .addTag('Admin Orders')
     .addTag('Orders')
-    .addTag('Super Admin Stores')
+    .addTag('Super Admin & Admin Stores')
     .addTag('Admin Stores')
     .addTag('Stores')
     .addTag('Cart')

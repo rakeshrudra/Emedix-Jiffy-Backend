@@ -394,7 +394,7 @@ export class AdminOrdersController {
 @ApiTags('Super Admin Orders')
 @ApiBearerAuth()
 @UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
-@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN)
+@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN, AdminRole.EMEDIX_OP_ADMIN)
 @Controller('api/admin/super/orders')
 export class SuperAdminAllOrdersController {
   constructor(private readonly ordersService: OrdersService) {}
