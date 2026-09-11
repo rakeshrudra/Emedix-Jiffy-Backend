@@ -96,3 +96,69 @@ export class OrdersGateway implements OnGatewayConnection {
     return key.replace(/\\n/g, '\n');
   }
 }
+
+export interface CustomerOrderUpdate {
+  id: number;
+  order_number: string;
+  status: string;
+  total_amount: number;
+  cancelled_at?: Date | null;
+  cancellation_reason?: string | null;
+  items: {
+    id: number;
+    product_code: string;
+    product_name: string;
+    qty: number;
+    is_available?: boolean;
+    confirmed_quantity?: number;
+  }[];
+}
+
+/**
+ * Customer mobile-app live-order feed. Client joins a room scoped to their
+ * own user_id, authenticated with the same bearer JWT the REST API uses.
+ */
+@WebSocketGateway({
+  namespace: '/orders',
+  cors: {
+    origin: true,
+  },
+})
+export class CustomerOrdersGateway implements OnGatewayConnection {
+  @WebSocketServer()
+  server: Server;
+
+  private readonly logger = new Logger(CustomerOrdersGateway.name);
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) { }
+
+  async handleConnection(client: Socket) {
+    const token = client.handshake.auth?.token as string | undefined;
+
+    try {
+      if (!token) throw new Error('Missing auth token');
+
+      const payload = await this.jwtService.verifyAsync<{ sub: string }>(
+        token,
+        { secret: this.configService.get<string>('JWT_SECRET') },
+      );
+
+      if (!payload.sub) {
+        throw new Error('Invalid token payload');
+      }
+
+      await client.join(`user:${payload.sub}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Rejecting customer socket connection: ${message}`);
+      client.disconnect(true);
+    }
+  }
+
+  emitOrderUpdated(user_id: string, order: CustomerOrderUpdate): void {
+    this.server.to(`user:${user_id}`).emit('order:updated', order);
+  }
+}
