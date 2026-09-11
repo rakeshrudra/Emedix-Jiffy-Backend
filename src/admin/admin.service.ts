@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -38,7 +39,15 @@ export class AdminService {
       throw new ConflictException('Admin is already signed up');
     }
 
-    const isStoreExempt = this.isStoreExemptRole(sso.role as AdminRole);
+    const role = sso.role as AdminRole;
+
+    if (!this.isJiffyEligibleRole(role)) {
+      throw new ForbiddenException(
+        'This role does not have access to the Jiffy Admin Panel',
+      );
+    }
+
+    const isStoreExempt = this.isStoreExemptRole(role);
 
     if (!isStoreExempt && !dto.store_id) {
       throw new BadRequestException('store_id is required for this role');
@@ -54,7 +63,7 @@ export class AdminService {
         mobile_no: sso.mobile_no,
         username: sso.username,
         store_id: isStoreExempt ? null : dto.store_id,
-        role: sso.role as AdminRole,
+        role,
       }),
     );
 
@@ -111,7 +120,21 @@ export class AdminService {
 
   private isStoreExemptRole(role: AdminRole): boolean {
     return (
-      role === AdminRole.EMEDIX_SUPERADMIN || role === AdminRole.EMEDIX_ADMIN
+      role === AdminRole.EMEDIX_SUPERADMIN ||
+      role === AdminRole.EMEDIX_ADMIN ||
+      role === AdminRole.EMEDIX_OP_ADMIN
+    );
+  }
+
+  private isJiffyEligibleRole(role: AdminRole): boolean {
+    return this.isStoreExemptRole(role) || this.isStoreScopedRole(role);
+  }
+
+  private isStoreScopedRole(role: AdminRole): boolean {
+    return (
+      role === AdminRole.STORE_OWNER ||
+      role === AdminRole.STORE_ADMIN ||
+      role === AdminRole.STORE_STAFF
     );
   }
 
