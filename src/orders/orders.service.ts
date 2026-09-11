@@ -33,7 +33,7 @@ import { AddressesService } from '../addresses/addresses.service';
 import { Address } from '../addresses/entities/address.entity';
 import { UsersService } from '../users/users.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { OrdersGateway } from './orders.gateway';
+import { CustomerOrderUpdate, CustomerOrdersGateway, OrdersGateway } from './orders.gateway';
 
 export interface AdminOrderSummary {
   order_id: number;
@@ -51,7 +51,7 @@ export interface AdminOrderSummary {
   scheduled_start_time: string | null;
   scheduled_end_time: string | null;
   cancelled_at: Date | null;
-  cancellation_reason: string;
+  cancellation_reason: string | null;
   cancelled_by: 'USER' | 'STORE' | null;
   created_at: Date;
   status: OrderStatus;
@@ -136,6 +136,7 @@ export class OrdersService {
     private readonly usersService: UsersService,
     private readonly notificationsService: NotificationsService,
     private readonly ordersGateway: OrdersGateway,
+    private readonly customerOrdersGateway: CustomerOrdersGateway,
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
@@ -748,6 +749,7 @@ export class OrdersService {
       }
 
       return {
+        savedOrder,
         order: {
           id: savedOrder.id,
           order_no: savedOrder.order_number,
@@ -764,6 +766,18 @@ export class OrdersService {
       updated.order.status,
       updated.order.order_no,
     );
+
+    try {
+      this.customerOrdersGateway.emitOrderUpdated(
+        updated.order.user_id,
+        this.buildCustomerOrderPayload(updated.savedOrder),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Failed to emit customer order:updated for ${updated.order.order_no}: ${message}`,
+      );
+    }
 
     return {
       order: {
@@ -849,6 +863,18 @@ export class OrdersService {
           `Failed to emit order:updated for ${savedOrder.order_number}: ${message}`,
         );
       });
+
+    try {
+      this.customerOrdersGateway.emitOrderUpdated(
+        savedOrder.user_id,
+        this.buildCustomerOrderPayload(savedOrder),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Failed to emit customer order:updated for ${savedOrder.order_number}: ${message}`,
+      );
+    }
 
     return savedOrder;
   }
@@ -1046,6 +1072,25 @@ export class OrdersService {
       cancelled_by: order.cancelled_by,
       created_at: order.created_at,
       status: order.status,
+    };
+  }
+
+  private buildCustomerOrderPayload(order: Order): CustomerOrderUpdate {
+    return {
+      id: order.id,
+      order_number: order.order_number,
+      status: order.status,
+      total_amount: Number(order.total_amount),
+      cancelled_at: order.cancelled_at,
+      cancellation_reason: order.cancellation_reason,
+      items: (order.items ?? []).map((item) => ({
+        id: item.id,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        qty: item.qty,
+        is_available: item.is_available,
+        confirmed_quantity: item.confirmed_quantity,
+      })),
     };
   }
 
