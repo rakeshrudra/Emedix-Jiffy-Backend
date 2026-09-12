@@ -123,17 +123,22 @@ export class StoresService {
   }
 
   /**
-   * GET /api/stores/:store_id
-   * Returns a single store by store_id
+   * GET /api/stores/:store_id?lat=&lng=
+   * Returns a single store by store_id.
    */
-  async findOne(store_id: string) {
+  async findOne(store_id: string, lat?: number, lng?: number) {
     const store = await this.storeRepository.findOne({ where: { store_id } });
     if (!store) throw new NotFoundException('Store not found');
+
+    const distance_km =
+      lat != null && lng != null
+        ? Math.round(this.haversineDistance(lat, lng, Number(store.latitude), Number(store.longitude)) * 100) / 100 : undefined;
 
     return {
       success: true,
       data: {
         ...this.format(store),
+        ...(distance_km !== undefined ? { distance_km } : {}),
         is_open: this.isStoreOpen(store),
       },
     };
