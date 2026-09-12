@@ -95,18 +95,24 @@ export class StoresController {
   }
 
   /**
-   * GET /api/stores/:id
-   * Returns a single store by id
+   * GET /api/stores/:id?lat=&lng=
+   * Returns a single store by id. lat/lng are optional;.
    */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single store by ERP store ID' })
   @ApiParam({ name: 'id', description: 'ERP store ID' })
+  @ApiQuery({ name: 'lat', required: false, example: 30.3165 })
+  @ApiQuery({ name: 'lng', required: false, example: 78.0322 })
   @ApiResponse({ status: 200, description: 'Store details' })
   @ApiResponse({ status: 404, description: 'Store not found' })
-  async findOne(@Param('id') id: string) {
-    return this.storesService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Query('lat', new ParseFloatPipe({ optional: true })) lat?: number,
+    @Query('lng', new ParseFloatPipe({ optional: true })) lng?: number,
+  ) {
+    return this.storesService.findOne(id, lat, lng);
   }
 }
 
