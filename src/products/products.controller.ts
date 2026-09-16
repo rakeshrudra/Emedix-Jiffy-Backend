@@ -30,6 +30,9 @@ import { AdminProductInventoryDto } from './dto/admin-product-inventory.dto';
 import { AdminProductInventoryQueryDto } from './dto/admin-product-inventory-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
+import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { AdminRole } from '../admin/enums/admin-role.enum';
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -197,5 +200,54 @@ export class AdminProductsController {
     );
 
     return { success: true, data: result };
+  }
+}
+
+@ApiTags('Super Admin Products')
+@ApiBearerAuth()
+@UseGuards(AdminJwtAuthGuard, AdminRolesGuard)
+@Roles(AdminRole.EMEDIX_SUPERADMIN, AdminRole.EMEDIX_ADMIN)
+@Controller('api/admin/super/products')
+export class SuperAdminProductsController {
+  constructor(private readonly productsService: ProductsService) {}
+
+  /**
+   * GET /api/admin/super/products/:store_id?page=1&limit=50&q=paracetamol
+   * Lists the full product inventory for any store, chosen by store_id.
+   * Restricted to Super Admin and Emedix Admin.
+   */
+  @Get(':store_id')
+  @ApiOperation({ summary: "List a chosen store's full product inventory (Super Admin)" })
+  @ApiParam({ name: 'store_id', description: 'ERP store ID' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search by product name, code, company, or composition' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page, max 100', example: 50 })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated store inventory returned',
+    type: AdminProductInventoryDto,
+    isArray: true,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Super Admin access required' })
+  async listStoreProducts(
+    @Param('store_id') store_id: string,
+    @Query() query: AdminProductInventoryQueryDto,
+  ) {
+    const result = await this.productsService.listAdminInventory(
+      store_id,
+      query,
+    );
+
+    return {
+      success: true,
+      data: result.data,
+      meta: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        pages: Math.ceil(result.total / result.limit),
+      },
+    };
   }
 }
