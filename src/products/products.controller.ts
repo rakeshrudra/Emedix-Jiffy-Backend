@@ -201,6 +201,41 @@ export class AdminProductsController {
 
     return { success: true, data: result };
   }
+
+  /**
+   * POST /api/admin/upload-inventory-swil
+   * Replaces the admin's store's entire product catalog with the uploaded
+   * SWIL ERP .xls file. Validates the whole file before writing anything —
+   * either every row is accepted and the swap happens atomically, or nothing changes.
+   */
+  @Post('upload-inventory-swil')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({ summary: "Replace the store's inventory from a SWIL ERP .xls file" })
+  @ApiResponse({ status: 201, description: 'Inventory replaced' })
+  @ApiResponse({ status: 400, description: 'File validation failed — no changes made' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async uploadInventorySwil(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded. Attach it as "file".');
+    }
+
+    const result = await this.productsService.uploadInventorySwil(
+      req.admin.store_id,
+      file.buffer,
+    );
+
+    return { success: true, data: result };
+  }
 }
 
 @ApiTags('Super Admin Products')

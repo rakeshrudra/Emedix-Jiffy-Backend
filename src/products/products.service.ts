@@ -10,6 +10,7 @@ import { ProductStockDto } from './dto/product-stock.dto';
 import { AdminProductInventoryDto } from './dto/admin-product-inventory.dto';
 import { AdminProductInventoryQueryDto } from './dto/admin-product-inventory-query.dto';
 import { parseInventoryFile } from './utils/inventory-upload.util';
+import { parseSwilInventoryFile } from './utils/inventory-upload-swil.util';
 
 export interface ProductListResult {
     data: Product[];
@@ -277,6 +278,53 @@ export class ProductsService {
         file_buffer: Buffer,
     ): Promise<{ store_id: string; products_inserted: number; warnings: string[] }> {
         const { rows, warnings, fatal_error } = parseInventoryFile(file_buffer);
+
+        if (fatal_error) {
+            throw new BadRequestException({
+                message: fatal_error,
+            });
+        }
+
+        const INSERT_CHUNK_SIZE = 500;
+
+        await this.dataSource.transaction(async (manager) => {
+            await manager.delete(Product, { store_id: store_id });
+
+            const products = rows.map((row) => ({
+                store_id: store_id,
+                product_code: row.product_code,
+                product_name: row.product_name,
+                product_type: row.product_type,
+                product_stock: Math.floor(row.product_stock),
+                product_price: row.product_price,
+                product_discount_price: row.product_price,
+                product_company: row.product_company,
+                hsn_code: '',
+                packaging_of_medicines: '',
+                product_composition: '',
+                prescription_required: true,
+                status: ProductStatus.ENABLE,
+            }));
+
+            for (let i = 0; i < products.length; i += INSERT_CHUNK_SIZE) {
+                const chunk = products.slice(i, i + INSERT_CHUNK_SIZE);
+                await manager
+                    .createQueryBuilder()
+                    .insert()
+                    .into(Product)
+                    .values(chunk)
+                    .execute();
+            }
+        });
+
+        return { store_id: store_id, products_inserted: rows.length, warnings };
+    }
+
+    async uploadInventorySwil(
+        store_id: string,
+        file_buffer: Buffer,
+    ): Promise<{ store_id: string; products_inserted: number; warnings: string[] }> {
+        const { rows, warnings, fatal_error } = parseSwilInventoryFile(file_buffer);
 
         if (fatal_error) {
             throw new BadRequestException({
