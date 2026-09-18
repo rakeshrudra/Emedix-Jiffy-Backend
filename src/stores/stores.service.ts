@@ -228,7 +228,15 @@ export class StoresService {
 
     return this.storeRepository.find({
       where: { store_id: In(store_ids) },
-      select: { store_id: true, emedix_name: true, name: true, city: true, state: true },
+      select: {
+        store_id: true,
+        emedix_name: true,
+        name: true,
+        city: true,
+        state: true,
+        medicine_discount_percent: true,
+        non_medicine_discount_percent: true,
+      },
     });
   }
 
@@ -517,6 +525,8 @@ export class StoresService {
       opening_time: s.opening_time ?? null,
       closing_time: s.closing_time ?? null,
       is_active: s.is_active,
+      medicine_discount_percent: Number(s.medicine_discount_percent),
+      non_medicine_discount_percent: Number(s.non_medicine_discount_percent),
     };
   }
 }

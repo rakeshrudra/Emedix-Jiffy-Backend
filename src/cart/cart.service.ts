@@ -6,7 +6,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
-import { ProductStatus } from '../products/entities/product.entity';
+import { Product, ProductStatus } from '../products/entities/product.entity';
+import { StoresService } from '../stores/stores.service';
+import { Store } from '../stores/entities/store.entity';
 import { AddItemDto } from './dto/add-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { CartItem } from './entities/cart-item.entity';
@@ -20,6 +22,7 @@ export class CartService {
     @InjectRepository(CartItem)
     private readonly itemRepo: Repository<CartItem>,
     private readonly productsService: ProductsService,
+    private readonly storesService: StoresService,
   ) {}
 
   async getCart(user_id: string, store_id?: string) {
@@ -150,6 +153,8 @@ export class CartService {
       throw new BadRequestException('Cart is empty');
     }
 
+    const [store] = await this.storesService.findManyByStoreIds([cart.store_id]);
+
     const issues: string[] = [];
     const itemResults: any[] = [];
 
@@ -182,7 +187,9 @@ export class CartService {
         const stock = this.productsService.parseStock(product);
         if (cartItem.quantity > stock) itemResult.max_quantity = stock;
 
-        const currentPrice = this.productsService.getEffectivePrice(product);
+        const currentPrice = store
+          ? this.productsService.getStoreDiscountedPrice(product, store)
+          : this.productsService.getEffectivePrice(product);
         const cartPrice =
           Number(cartItem.product_discount_price) ||
           Number(cartItem.product_price);
@@ -283,26 +290,31 @@ export class CartService {
     };
   }
 
-  private async getStockByProductCode(cart: Cart): Promise<Map<string, number>> {
+  private async getProductsByCode(cart: Cart): Promise<Map<string, Product>> {
     const productCodes = [...new Set((cart.items ?? []).map((item) => item.product_code))];
     const products = await this.productsService.findManyByCodes(
       cart.store_id,
       productCodes,
     );
-    return new Map(
-      products.map((product) => [product.product_code, this.productsService.parseStock(product)]),
-    );
+    return new Map(products.map((product) => [product.product_code, product]));
   }
 
   private async formatWithStock(cart: Cart) {
-    const stockByProductCode = await this.getStockByProductCode(cart);
-    return this.format(cart, stockByProductCode);
+    const [productsByCode, stores] = await Promise.all([
+      this.getProductsByCode(cart),
+      this.storesService.findManyByStoreIds([cart.store_id]),
+    ]);
+    return this.format(cart, productsByCode, stores[0] ?? null);
   }
 
-  private format(cart: Cart, stockByProductCode: Map<string, number>) {
+  private format(
+    cart: Cart,
+    productsByCode: Map<string, Product>,
+    store: Store | null,
+  ) {
     const items = (cart.items ?? []).map((item) => {
-      const effectivePrice =
-        Number(item.product_discount_price) || Number(item.product_price);
+      const product = productsByCode.get(item.product_code) ?? null;
+      const effectivePrice = product && store ? this.productsService.getStoreDiscountedPrice(product, store) : Number(item.product_discount_price) || Number(item.product_price);
 
       return {
         id: item.id,
@@ -313,7 +325,7 @@ export class CartService {
         effective_price: effectivePrice,
         quantity: item.quantity,
         line_total: effectivePrice * item.quantity,
-        available_stock: stockByProductCode.get(item.product_code) ?? 0,
+        available_stock: product ? this.productsService.parseStock(product) : 0,
       };
     });
 

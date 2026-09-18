@@ -17,6 +17,11 @@ export enum ProductStatus {
     DISABLE = 'Disable',
 }
 
+export enum ProductCategory {
+    MEDICINE = 'Medicine',
+    NON_MEDICINE = 'Non Medicine',
+}
+
 @Entity('products')
 @Unique(['store_id', 'product_code'])
 export class Product {
@@ -83,6 +88,15 @@ export class Product {
     @ApiProperty({ enum: ProductStatus, example: ProductStatus.ENABLE })
     @Column({ type: 'enum', enum: ProductStatus, default: ProductStatus.ENABLE })
     status: ProductStatus;
+
+    @ApiProperty({ enum: ProductCategory, example: ProductCategory.MEDICINE })
+    @Column({
+        name: 'products_category',
+        type: 'enum',
+        enum: ProductCategory,
+        default: ProductCategory.MEDICINE,
+    })
+    products_category: ProductCategory;
 
     @ApiProperty({ example: 250 })
     @Column({

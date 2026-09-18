@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import { Product, ProductStatus } from './entities/product.entity';
+import { Product, ProductCategory, ProductStatus } from './entities/product.entity';
+import { Store } from '../stores/entities/store.entity';
 import { ProductSwil } from './entities/product-swil.entity';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductSearchQueryDto } from './dto/product-search-query.dto';
@@ -185,6 +186,30 @@ export class ProductsService {
 
     getEffectivePrice(product: Product): number {
         return Number(product.product_discount_price) || Number(product.product_price) || 0;
+    }
+
+    /**
+     * Store-level category discount percent (medicine vs non-medicine) for a
+     * product, looked up live from the store's current settings.
+     */
+    getDiscountPercent(product: Product, store: Store): number {
+        return product.products_category === ProductCategory.MEDICINE
+            ? Number(store.medicine_discount_percent) || 0
+            : Number(store.non_medicine_discount_percent) || 0;
+    }
+
+    /**
+     * Store-level category discount (medicine vs non-medicine), computed live —
+     * applied on top of the product's own current base price. Used for display (cart, validation) where the live product price is the right base.
+     */
+    getStoreDiscountedPrice(product: Product, store: Store): number {
+        const basePrice = Number(product.product_price) || 0;
+        const discountPercent = this.getDiscountPercent(product, store);
+
+        if (discountPercent <= 0) return basePrice;
+
+        const discounted = basePrice - (basePrice * discountPercent) / 100;
+        return Math.round(discounted * 100) / 100;
     }
 
     /**

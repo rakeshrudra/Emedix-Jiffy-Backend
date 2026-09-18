@@ -96,4 +96,18 @@ export class UpdateStoreAdminDto {
   @Min(-180)
   @Max(180)
   longitude?: number;
+
+  @ApiProperty({ example: 10, required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  medicine_discount_percent?: number;
+
+  @ApiProperty({ example: 5, required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  non_medicine_discount_percent?: number;
 }

@@ -7,12 +7,14 @@ import { CartService } from './cart.service';
 import { CartController } from './cart.controller';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ProductsModule } from '../products/products.module';
+import { StoresModule } from '../stores/stores.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Cart, CartItem]),
     JwtModule.register({}),
     ProductsModule,
+    StoresModule,
   ],
   controllers: [CartController],
   providers: [CartService, JwtAuthGuard],

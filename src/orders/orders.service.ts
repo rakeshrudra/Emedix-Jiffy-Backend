@@ -216,8 +216,8 @@ export class OrdersService {
     }
 
     // 7. Fetch full product details per cart item — needed to populate
-    // order_items with catalog fields the cart doesn't carry (company,
-    // type, packaging, composition, HSN).
+    // order_items with catalog fields the cart doesn't carry (company, type, packaging, composition etc)
+    // and to compute the store's category discount fresh at order time.
     const productsByCode = new Map<string, Product>();
     for (const cartItem of cart.items) {
       const product = await this.productsService.findByCode(
@@ -226,6 +226,8 @@ export class OrdersService {
       );
       if (product) productsByCode.set(cartItem.product_code, product);
     }
+
+    const [store] = await this.storesService.findManyByStoreIds([dto.store_id]);
 
     // 8. Ordered quantity must not exceed current stock
     for (const cartItem of cart.items) {
@@ -238,15 +240,26 @@ export class OrdersService {
       }
     }
 
-    // 9. Compute totals server-side from cart item prices — never trust the client
-    const subtotal = cart.items.reduce((sum, item) => {
-      const effectivePrice =
-        Number(item.product_discount_price) || Number(item.product_price);
-      return sum + effectivePrice * item.quantity;
-    }, 0);
+    // 9. Compute totals server-side — discount % is live, applied to the cart's frozen price.
+    let subtotal = 0;
+    let discount = 0;
+    for (const cartItem of cart.items) {
+      const product = productsByCode.get(cartItem.product_code);
+      const basePrice = Number(cartItem.product_price);
+      const discountPercent =
+        product && store
+          ? this.productsService.getDiscountPercent(product, store)
+          : 0;
+      const discountedPrice = basePrice - (basePrice * discountPercent) / 100;
+
+      subtotal += basePrice * cartItem.quantity;
+      discount += (basePrice - discountedPrice) * cartItem.quantity;
+    }
+    subtotal = Math.round(subtotal * 100) / 100;
+    discount = Math.round(discount * 100) / 100;
+
     const deliveryCharge = 0; // dummy for now — no delivery-fee logic yet
-    const discount = 0; // dummy for now — no coupon/discount logic yet
-    const totalAmount = subtotal + deliveryCharge - discount;
+    const totalAmount = subtotal - discount + deliveryCharge;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -259,8 +272,13 @@ export class OrdersService {
 
       const items = cart.items.map((cartItem) => {
         const price = Number(cartItem.product_price);
-        const discountPrice = Number(cartItem.product_discount_price);
         const product = productsByCode.get(cartItem.product_code);
+        const discountPercent =
+          product && store
+            ? this.productsService.getDiscountPercent(product, store)
+            : 0;
+        const discountPrice =
+          Math.round((price - (price * discountPercent) / 100) * 100) / 100;
 
         return this.orderItemRepository.create({
           product_code: cartItem.product_code,
@@ -273,7 +291,7 @@ export class OrdersService {
           qty: cartItem.quantity,
           product_price: price,
           product_discount_price: discountPrice,
-          total: (discountPrice || price) * cartItem.quantity,
+          total: discountPrice * cartItem.quantity,
         });
       });
 

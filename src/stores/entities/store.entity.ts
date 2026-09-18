@@ -54,4 +54,20 @@ export class Store {
 
   @Column({ name: 'terms_accepted', default: false })
   terms_accepted: boolean;
+
+  @Column('decimal', {
+    name: 'medicine_discount_percent',
+    precision: 5,
+    scale: 2,
+    default: 0,
+  })
+  medicine_discount_percent: number;
+
+  @Column('decimal', {
+    name: 'non_medicine_discount_percent',
+    precision: 5,
+    scale: 2,
+    default: 0,
+  })
+  non_medicine_discount_percent: number;
 }
