@@ -8,6 +8,7 @@ export default registerAs('database', (): TypeOrmModuleOptions => ({
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    timezone: '+05:30',
     autoLoadEntities: true,
     synchronize: false,
 }));
