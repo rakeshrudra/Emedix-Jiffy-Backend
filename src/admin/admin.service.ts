@@ -147,7 +147,14 @@ export class AdminService {
       throw new UnauthorizedException('Admin is not assigned to a store');
     }
 
-    return this.storesService.findStoreForAdminByStoreId(admin.store_id);
+    try {
+      return await this.storesService.findStoreForAdminByStoreId(admin.store_id);
+    } catch {
+      throw new ForbiddenException({
+        error_code: 'STORE_INACTIVE',
+        message: 'Your store has been deactivated. Please contact an emedix_admin.',
+      });
+    }
   }
 
   private formatAdminProfile(admin: Admin, store: Store | null) {
