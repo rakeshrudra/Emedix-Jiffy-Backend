@@ -1012,8 +1012,8 @@ export class OrdersService {
 
     const lastOrder = await manager
       .createQueryBuilder(Order, 'order')
-      .where('order.order_number LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('order.order_number', 'DESC')
+      .where("order.order_number LIKE 'EJ-%'")
+      .orderBy('order.id', 'DESC')
       .setLock('pessimistic_write')
       .getOne();
 
@@ -1024,7 +1024,7 @@ export class OrdersService {
       if (!isNaN(lastSeq)) seq = lastSeq + 1;
     }
 
-    return `${prefix}${seq.toString().padStart(4, '0')}`;
+    return `${prefix}${seq.toString().padStart(6, '0')}`;
   }
 
   private formatPickupAddress(store: Store): OrderPickupAddress {
