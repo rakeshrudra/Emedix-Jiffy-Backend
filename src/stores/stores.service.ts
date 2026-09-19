@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Store } from './entities/store.entity';
+import { Product } from '../products/entities/product.entity';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreAdminDto } from './dto/update-store-admin.dto';
 
@@ -23,6 +24,8 @@ export class StoresService {
   constructor(
     @InjectRepository(Store)
     private readonly storeRepository: Repository<Store>,
+    @InjectRepository(Product)
+    private readonly productRepository: Repository<Product>,
   ) { }
 
   /**
@@ -162,12 +165,29 @@ export class StoresService {
       order: { name: 'ASC' },
     });
 
+    const stockStats = await this.productRepository
+      .createQueryBuilder('product')
+      .select('product.store_id', 'store_id')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('MAX(product.created_at)', 'last_uploaded_at')
+      .groupBy('product.store_id')
+      .getRawMany<{ store_id: string; count: string; last_uploaded_at: Date }>();
+
+    const stockStatsByStoreId = new Map(
+      stockStats.map((row) => [row.store_id, row]),
+    );
+
     return {
       success: true,
-      data: stores.map((store) => ({
-        ...this.format(store),
-        is_open: this.isStoreAvailableNow(store),
-      })),
+      data: stores.map((store) => {
+        const stats = stockStatsByStoreId.get(store.store_id);
+        return {
+          ...this.format(store),
+          is_open: this.isStoreAvailableNow(store),
+          stock_uploaded: !!stats && Number(stats.count) > 0,
+          stock_last_updated_at: stats?.last_uploaded_at ?? null,
+        };
+      }),
     };
   }
 
