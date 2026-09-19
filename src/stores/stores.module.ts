@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { StoresService } from './stores.service';
 import { StoresController, AdminStoresController, SuperAdminStoresController } from './stores.controller';
 import { Store } from './entities/store.entity';
+import { Product } from '../products/entities/product.entity';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { AdminJwtAuthGuard } from '../common/guards/admin-jwt-auth.guard';
@@ -11,7 +12,7 @@ import { AdminRolesGuard } from '../common/guards/admin-roles.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Store]),
+    TypeOrmModule.forFeature([Store, Product]),
     JwtModule.register({}),
   ],
   controllers: [StoresController, AdminStoresController, SuperAdminStoresController],
