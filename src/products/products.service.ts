@@ -24,6 +24,7 @@ export interface AdminInventoryListResult {
     total: number;
     page: number;
     limit: number;
+    last_uploaded_at: Date | null;
 }
 
 @Injectable()
@@ -177,7 +178,13 @@ export class ProductsService {
             product_stock: Number(product.product_stock),
         }));
 
-        return { data, total, page, limit };
+        const { last_uploaded_at } = await this.productRepository
+            .createQueryBuilder('p')
+            .select('MAX(p.created_at)', 'last_uploaded_at')
+            .where('p.store_id = :store_id', { store_id: store_id })
+            .getRawOne<{ last_uploaded_at: Date | null }>();
+
+        return { data, total, page, limit, last_uploaded_at };
     }
 
     parseStock(product: Product): number {

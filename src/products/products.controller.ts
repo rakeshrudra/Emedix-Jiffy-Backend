@@ -163,6 +163,7 @@ export class AdminProductsController {
         page: result.page,
         limit: result.limit,
         pages: Math.ceil(result.total / result.limit),
+        last_uploaded_at: result.last_uploaded_at,
       },
     };
   }
@@ -282,6 +283,7 @@ export class SuperAdminProductsController {
         page: result.page,
         limit: result.limit,
         pages: Math.ceil(result.total / result.limit),
+        last_uploaded_at: result.last_uploaded_at,
       },
     };
   }
